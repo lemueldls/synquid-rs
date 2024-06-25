@@ -1,3 +1,6 @@
 [submodule "specs"]
 	path = specs
 	url = https://github.com/lemueldls/synquid.git
+[submodule "tree-sitter"]
+	path = tree-sitter
+	url = https://github.com/lemueldls/tree-sitter-synquid.git
