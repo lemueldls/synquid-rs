@@ -1,0 +1,55 @@
+[package]
+edition = "2021"
+name = "synquid"
+version = "0.1.0"
+
+[lints]
+clippy.all = "warn"
+clippy.cargo = "warn"
+clippy.complexity = "warn"
+clippy.correctness = "deny"
+clippy.nursery = "warn"
+clippy.pendatic = "warn"
+clippy.perf = "warn"
+clippy.style = "warn"
+clippy.suspicious = "deny"
+clippy.unsafe_code = "deny"
+
+[features]
+default = ["std"]
+
+serde = ["slotmap/serde", "bimap/serde"]
+std = ["slotmap/std", "bimap/std", "num-bigint/std", "derive_more/std"]
+
+[dependencies]
+# # bimap = { version = "0.6.3", default-features = false }
+bimap = "0.6.3"
+# # combine = { version = "*", default-features = false }
+# dashmap = "5.5.3"
+derive_more = { git = "https://github.com/JelteF/derive_more", default-features = false, features = [
+  "into",
+  "into_iterator",
+  "as_ref",
+  "constructor",
+  "is_variant",
+] }
+hashbrown = "0.14.5"
+itertools = "0.13.0"
+lazy_static = "1.4.0"
+log = "0.4.21"
+# # num-bigint = { version = "0.4.5", default-features = false }
+num-bigint = "0.4.5"
+num-traits = "0.2.19"
+owo-colors = "4.0.0"
+parking_lot = "0.12.3"
+phf = { version = "0.11.2", features = ["macros"] }
+# # slotmap = { version = "1.0.7", default-features = false }
+slotmap = "1.0.7"
+tree-sitter = "0.22.6"
+tree-sitter-synquid = { path = "../tree-sitter-synquid" }
+
+z3 = { version = "0.12.1", features = ["arbitrary-size-numeral"] }
+z3-sys = { version = "0.8.1" }
+
+[build-dependencies]
+cc = "*"

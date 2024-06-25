@@ -1,0 +1,2 @@
+-- replicate :: n: Nat -> x: a -> {List a | len _v == n}
+type Nat = { v: Int | 0 <= v }
