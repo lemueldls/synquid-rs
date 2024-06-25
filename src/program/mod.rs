@@ -567,7 +567,9 @@ pub fn align(s: String) -> String {
         .join("\n")
 }
 
-#[derive(derive_more::AsRef,, derive_more::Into, derive_more::Constructor, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    derive_more::AsRef, derive_more::Into, derive_more::Constructor, Debug, Clone, PartialEq, Eq,
+)]
 pub struct Declaration(Pos<BareDeclaration>);
 
 impl Declaration {
