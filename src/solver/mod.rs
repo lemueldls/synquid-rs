@@ -1,5 +1,6 @@
 use crate::{logic::Formula, program::Environment};
 
+pub mod fixpoint;
 pub mod horn;
 
 pub trait MonadSMT {
