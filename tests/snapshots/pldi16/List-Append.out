@@ -1,0 +1,6 @@
+append :: xs:List a -> ys:List a -> {List a|len _v == len xs + len ys}
+append = \xs . \ys . 
+    match xs with
+      Nil -> ys
+      Cons x3 x4 -> Cons x3 (append x4
+                               ys)

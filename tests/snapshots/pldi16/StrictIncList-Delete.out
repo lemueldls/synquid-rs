@@ -1,0 +1,11 @@
+delete :: x:a -> xs:IList a -> {IList a|ielems _v == ielems xs - [x]}
+delete = \x . \xs . 
+    match xs with
+      INil -> xs
+      ICons x3 x4 -> 
+        if x < x3
+          then xs
+          else 
+            if x3 < x
+              then ICons x3 (delete x x4)
+              else x4

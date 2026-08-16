@@ -1,0 +1,7 @@
+mergeAddressBooks :: a:AddressBook -> b:AddressBook -> {AddressBook|size _v == size a + size b}
+mergeAddressBooks = \a . \b . 
+    match a with
+      AddressBook x2 x3 -> 
+        match b with
+          AddressBook x6 x7 -> AddressBook
+                                 (append x2 x6) (append x3 x7)

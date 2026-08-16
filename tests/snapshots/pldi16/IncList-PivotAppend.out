@@ -1,0 +1,6 @@
+pivotAppend :: p:a -> xs:IList {a|_v <= p} -> ys:IList {a|_v > p} -> {IList a|ilen _v == (ilen xs + ilen ys) + 1 && ielems _v == (ielems xs + ielems ys) + [p]}
+pivotAppend = \p . \xs . \ys . 
+      match xs with
+        INil -> ICons p ys
+        ICons x5 x6 -> ICons x5
+                         (pivotAppend p x6 ys)

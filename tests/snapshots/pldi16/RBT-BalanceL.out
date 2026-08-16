@@ -1,0 +1,27 @@
+rotateL :: x:a -> lx:{a|_v < x} -> llc:Color -> ll:{RBT {a|_v < lx}|color _v == llc} -> lr:{RBT {a|lx < _v && _v < x}|color _v != llc && blackHeight _v == blackHeight ll} -> r:{RBT {a|x < _v}|blackHeight _v == blackHeight ll} -> {WeakRBT a|(((isOk _v && wcolor _v == 0) && welems _v == (([x, lx] + elems ll) + elems lr) + elems r) && wheight _v == blackHeight r + 1) && wsize _v == ((2 + size ll) + size lr) + size r}
+rotateL = \x . \lx . \llc .
+      \ll . \lr . \r . 
+            if llc == 0
+              then 
+                match ll with
+                  Empty -> error
+                  Node x5 x6 x7 x8 -> Ok lx llc
+                                        (Node x5 black x7 x8) (Node x
+                                                                 black lr r)
+              else 
+                match lr with
+                  Empty -> error
+                  Node x25 x26 x27 x28 -> Ok x25
+                                            x26 (Node lx llc ll x27) (Node x
+                                                                        llc x28
+                                                                        r)
+balanceL :: y:a -> c:Color -> l:{WeakRBT {a|_v < y}|c == 0 ==> isOk _v} -> r:{RBT {a|_v > y}|(c == 0 ==> color _v == 1) && blackHeight _v == wheight l} -> {WeakRBT a|((welems _v == ([y] + welems l) + elems r && wheight _v == blackHeight r + c) && wsize _v == (1 + wsize l) + size r) && (isOk _v || c == 0)}
+balanceL = \y . \c . \l . \r . 
+        match l with
+          Ok x5 x6 x7 x8 -> 
+            if (c == 0) && (x6 == 0)
+              then Bad x5 black x7 (Node y c
+                                      x8 r)
+              else Ok y c (Node x5 x6 x7 x8) r
+          Bad x29 x30 x31 x32 -> rotateL y
+                                   x29 x30 x31 x32 r

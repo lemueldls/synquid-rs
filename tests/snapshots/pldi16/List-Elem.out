@@ -1,0 +1,8 @@
+elem :: x:a -> xs:List a -> {Bool|_v == (x in elems xs)}
+elem = \x . \xs . 
+    match xs with
+      Nil -> false
+      Cons x3 x4 -> 
+        if x3 == x
+          then true
+          else elem x x4

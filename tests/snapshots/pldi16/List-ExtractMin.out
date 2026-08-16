@@ -1,0 +1,13 @@
+extractMin :: xs:{List a|len _v > 0} -> {MinPair a|elems xs == [min _v] + elems (rest _v) && len xs == 1 + len (rest _v)}
+extractMin = \xs . 
+  match xs with
+    Nil -> error
+    Cons x3 x4 -> 
+      match x4 with
+        Nil -> MinPair x3 Nil
+        Cons x9 x10 -> 
+          match extractMin x4 with
+            MinPair x14 x15 -> 
+              if x14 <= x3
+                then MinPair x14 (Cons x3 x15)
+                else MinPair x3 (Cons x14 x15)

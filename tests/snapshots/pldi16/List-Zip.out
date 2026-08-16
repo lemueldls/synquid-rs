@@ -1,0 +1,9 @@
+zip :: xs:List a -> ys:{List b|len _v == len xs} -> {List Pair a b|len _v == len xs}
+zip = \xs . \ys . 
+    match xs with
+      Nil -> Nil
+      Cons x3 x4 -> 
+        match ys with
+          Nil -> error
+          Cons x7 x8 -> Cons (Pair x3 x7)
+                          (zip x4 x8)

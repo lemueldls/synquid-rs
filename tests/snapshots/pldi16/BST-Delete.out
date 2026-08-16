@@ -1,0 +1,15 @@
+delete :: t:BST a -> x:a -> {BST a|telems _v == telems t - [x]}
+delete = \t . \x . 
+    match t with
+      Empty -> t
+      Node x4 x5 x6 -> 
+        if (x4 != x) && (x4 <= x)
+          then Node x4 x5 (delete x6 x)
+          else 
+            if x4 != x
+              then Node x4 (delete x5 x) x6
+              else 
+                match x5 with
+                  Empty -> x6
+                  Node x20 x21 x22 -> Node x20 x21
+                                        (delete (Node x x22 x6) x4)

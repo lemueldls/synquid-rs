@@ -1,0 +1,11 @@
+compress :: xs:List a -> {CList a|elems _v == elems xs}
+compress = \xs . 
+  match xs with
+    Nil -> Nil
+    Cons x3 x4 -> 
+      match compress x4 with
+        Nil -> Cons x3 Nil
+        Cons x10 x11 -> 
+          if x3 == x10
+            then compress x4
+            else Cons x3 (Cons x10 x11)

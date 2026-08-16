@@ -1,0 +1,6 @@
+map :: f:(arg0:a -> b) -> xs:List a -> {List b|len _v == len xs}
+map = \f . \xs . 
+    match xs with
+      Nil -> Nil
+      Cons x3 x4 -> Cons (f x3) (map f
+                                   x4)

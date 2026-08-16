@@ -1,0 +1,6 @@
+replicate :: n:Nat -> x:a -> {List a|len _v == n}
+replicate = \n . \x . 
+    if n <= 0
+      then Nil
+      else Cons x (replicate (dec n)
+                     x)

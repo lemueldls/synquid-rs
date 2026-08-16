@@ -1,0 +1,3 @@
+singleton :: x:a -> {Heap a|elems _v == [x]}
+singleton = \x . Node x Empty
+                   Empty

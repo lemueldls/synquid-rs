@@ -1,0 +1,8 @@
+selectSort :: xs:List a -> {IList a|ielems _v == elems xs}
+selectSort = \xs . 
+  match xs with
+    Nil -> INil
+    Cons x3 x4 -> 
+      match extractMin xs with
+        MinPair x8 x9 -> ICons x8
+                           (selectSort x9)

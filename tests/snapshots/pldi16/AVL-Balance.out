@@ -1,0 +1,24 @@
+balance :: x:a -> l:AVL {a|_v < x} -> r:{AVL {a|_v > x}|isBal l _v 2} -> {AVL a|(balHt l r _v && bigHt l r _v) && elems _v == ([x] + elems l) + elems r}
+balance = \x . \l . \r . 
+      if (isSkewed l r) &&
+           (isLeftHeavy l)
+        then rotLL x l r
+        else 
+          if (isSkewed l r) &&
+               (isRightHeavy l)
+            then rotLR x l r
+            else 
+              if isSkewed l r
+                then rotL0 x l r
+                else 
+                  if (isSkewed r l) &&
+                       (isLeftHeavy r)
+                    then rotRL x l r
+                    else 
+                      if (isSkewed r l) &&
+                           (isRightHeavy r)
+                        then rotRR x l r
+                        else 
+                          if isSkewed r l
+                            then rotR0 x l r
+                            else Node x l r (nodeHeight l r)

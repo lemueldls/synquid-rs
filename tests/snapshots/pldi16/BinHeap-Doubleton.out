@@ -1,0 +1,10 @@
+doubleton :: x:a -> y:a -> {Heap a|elems _v == [x, y]}
+doubleton = \x . \y . 
+    if (x <= y) && (y <= x)
+      then Node x Empty Empty
+      else 
+        if y <= x
+          then Node y Empty (Node x Empty
+                               Empty)
+          else Node x Empty (Node y Empty
+                               Empty)

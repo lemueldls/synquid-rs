@@ -1,0 +1,12 @@
+mkAddressBook :: adds:List Address -> {AddressBook|size _v == len adds}
+mkAddressBook = \adds . 
+  match adds with
+    Nil -> AddressBook Nil Nil
+    Cons x5 x6 -> 
+      match mkAddressBook x6 with
+        AddressBook x10 x11 -> 
+          if getPriv x5
+            then AddressBook x10 (Cons x5
+                                    x11)
+            else AddressBook (Cons x5 x10)
+                   x11

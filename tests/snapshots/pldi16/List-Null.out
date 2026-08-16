@@ -1,0 +1,5 @@
+null :: xs:List a -> {Bool|_v == (len xs == 0)}
+null = \xs . 
+  match xs with
+    Nil -> true
+    Cons x3 x4 -> false

@@ -1,0 +1,13 @@
+insert :: y:a -> t:AVL a -> {AVL a|(realHeight t <= realHeight _v && realHeight _v <= realHeight t + 1) && elems _v == [y] + elems t}
+insert = \y . \t . 
+    match t with
+      Leaf -> balance y Leaf Leaf
+      Node x8 x9 x10 x11 -> 
+        if x8 < y
+          then balance x8 x9 (insert y
+                                x10)
+          else 
+            if y < x8
+              then balance x8 (insert y x9)
+                     x10
+              else t

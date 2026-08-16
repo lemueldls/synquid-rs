@@ -1,0 +1,6 @@
+replicate :: x:a -> h:{Int|_v >= 0} -> {BalTree a|height _v == h}
+replicate = \x . \h . 
+    if h <= 0
+      then Empty
+      else Node x (replicate x (dec
+                                  h)) (replicate x (dec h))

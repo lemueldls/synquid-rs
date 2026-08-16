@@ -1,0 +1,6 @@
+toList :: t:Tree a -> {List a|len _v == size t}
+toList = \t . 
+  match t with
+    Empty -> Nil
+    Node x4 x5 x6 -> Cons x4 (append
+                                (toList x5) (toList x6))

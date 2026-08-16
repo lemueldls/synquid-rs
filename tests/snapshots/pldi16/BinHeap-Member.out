@@ -1,0 +1,12 @@
+member :: x:a -> t:Heap a -> {Bool|_v == (x in elems t)}
+member = \x . \t . 
+    match t with
+      Empty -> false
+      Node x4 x5 x6 -> 
+        if (x4 != x) && (x <= x4)
+          then false
+          else 
+            if x <= x4
+              then not false
+              else or (member x x5) (member x
+                                       x6)

@@ -1,0 +1,6 @@
+reverse :: <p :: a -> a -> Bool> . xs:List a <p> -> {List a <p _1 _0>|len _v == len xs && elems _v == elems xs}
+reverse = \xs . 
+  match xs with
+    Nil -> Nil
+    Cons x3 x4 -> snoc x3 (reverse
+                             x4)

@@ -1,0 +1,11 @@
+member :: x:a -> t:BST a -> {Bool|_v == (x in telems t)}
+member = \x . \t . 
+    match t with
+      Empty -> false
+      Node x4 x5 x6 -> 
+        if (x <= x4) && (x4 <= x)
+          then true
+          else 
+            if x <= x4
+              then member x x5
+              else member x x6

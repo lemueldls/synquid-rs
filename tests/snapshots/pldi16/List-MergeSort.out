@@ -1,0 +1,11 @@
+mergeSort :: xs:List a -> {IList a|ilen _v == len xs && ielems _v == elems xs}
+mergeSort = \xs . 
+  match xs with
+    Nil -> INil
+    Cons x3 x4 -> 
+      match x4 with
+        Nil -> ICons x3 INil
+        Cons x9 x10 -> 
+          match split xs with
+            Pair x14 x15 -> merge (mergeSort
+                                     x14) (mergeSort x15)

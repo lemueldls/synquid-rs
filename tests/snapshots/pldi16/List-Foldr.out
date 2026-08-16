@@ -1,0 +1,6 @@
+foldr :: <p :: List (a) -> b -> Bool> . f:(xs:List a -> x:a -> acc:{b|p xs _v} -> {b|p ((Cons x xs)) _v}) -> seed:{b|p (Nil) _v} -> ys:List a -> {b|p ys _v}
+foldr = \f . \seed . \ys . 
+      match ys with
+        Nil -> seed
+        Cons x3 x4 -> f x4 x3 (foldr f
+                                 seed x4)

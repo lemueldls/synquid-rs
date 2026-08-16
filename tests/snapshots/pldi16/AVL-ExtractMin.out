@@ -1,0 +1,9 @@
+extractMin :: t:AVL a -> {MinPair a|elems t == melems _v && eqOrOneLess (mheight _v) (realHeight t)}
+extractMin = \t . 
+  match t with
+    Leaf -> Nothing
+    Node x5 x6 x7 x8 -> 
+      match extractMin x6 with
+        Nothing -> MinPair x5 x7
+        MinPair x14 x15 -> MinPair x14
+                             (balance x5 x15 x7)

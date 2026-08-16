@@ -1,0 +1,16 @@
+merge :: x:a -> l:AVL {a|_v < x} -> r:{AVL {a|_v > x}|isBal l _v 1} -> {AVL a|bigHt l r _v && elems _v == elems l + elems r}
+merge = \x . \l . \r . 
+      match extractMin r with
+        Nothing -> l
+        MinPair x4 x5 -> balance x4 l x5
+delete :: y:a -> t:AVL a -> {AVL a|eqOrOneLess (realHeight _v) (realHeight t) && elems t - [y] == elems _v}
+delete = \y . \t . 
+    match t with
+      Leaf -> t
+      Node x5 x6 x7 x8 -> 
+        if x5 < y
+          then balance x5 x6 (delete y x7)
+          else 
+            if y < x5
+              then balance x5 (delete y x6) x7
+              else merge x5 x6 x7

@@ -1,0 +1,6 @@
+insertSort :: xs:List a -> {IList a|ielems _v == elems xs}
+insertSort = \xs . 
+  match xs with
+    Nil -> INil
+    Cons x3 x4 -> insert x3
+                    (insertSort x4)

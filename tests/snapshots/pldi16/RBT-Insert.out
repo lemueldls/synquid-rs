@@ -1,0 +1,23 @@
+ins :: x:a -> t:RBT a -> {WeakRBT a|(((welems _v == [x] + elems t && wheight _v == blackHeight t) && size t <= wsize _v) && wsize _v <= size t + 1) && (isOk _v || color t == 0)}
+ins = \x . \t . 
+    match t with
+      Empty -> Ok x red Empty Empty
+      Node x9 x10 x11 x12 -> 
+        if (x <= x9) && (x9 <= x)
+          then Ok x9 x10 x11 x12
+          else 
+            if x9 <= x
+              then balanceR x9 x10 x11 (ins x
+                                          x12)
+              else balanceL x9 x10 (ins x x11)
+                     x12
+mkBlack :: t:WeakRBT a -> {RBT a|elems _v == welems t}
+mkBlack = \t . 
+  match t with
+    Ok x5 x6 x7 x8 -> Node x5 x6 x7
+                        x8
+    Bad x17 x18 x19 x20 -> Node x17
+                             black x19 x20
+insert :: x:a -> t:RBT a -> {RBT a|elems _v == elems t + [x]}
+insert = \x . \t . mkBlack (ins
+                              x t)

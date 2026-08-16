@@ -1,0 +1,6 @@
+range :: size:Nat -> lo:Int -> {UList {Int|lo <= _v && _v <= lo + size}|len _v == size}
+range = \size . \lo . 
+    if size <= 0
+      then Nil
+      else Cons lo (range (dec size)
+                      (inc lo))

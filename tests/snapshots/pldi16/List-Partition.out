@@ -1,0 +1,10 @@
+partition :: p:a -> xs:List a -> {Pair List {a|_v <= p} List {a|_v > p}|len (fst _v) + len (snd _v) == len xs && elems (fst _v) + elems (snd _v) == elems xs}
+partition = \p . \xs . 
+    match xs with
+      Nil -> Pair Nil Nil
+      Cons x5 x6 -> 
+        match partition p x6 with
+          Pair x11 x12 -> 
+            if x5 <= p
+              then Pair (Cons x5 x11) x12
+              else Pair x11 (Cons x5 x12)

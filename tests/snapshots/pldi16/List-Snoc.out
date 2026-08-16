@@ -1,0 +1,6 @@
+snoc :: <p :: a -> a -> Bool> . x:a -> xs:List {a|p _v x} <p> -> {List a <p>|len _v == len xs + 1 && elems _v == elems xs + [x]}
+snoc = \x . \xs . 
+    match xs with
+      Nil -> Cons x Nil
+      Cons x5 x6 -> Cons x5 (snoc x
+                               x6)

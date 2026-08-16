@@ -1,0 +1,6 @@
+stutter :: xs:List a -> {List a|len _v == 2 * len xs}
+stutter = \xs . 
+  match xs with
+    Nil -> xs
+    Cons x3 x4 -> Cons x3 (Cons x3
+                             (stutter x4))

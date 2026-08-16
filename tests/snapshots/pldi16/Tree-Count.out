@@ -1,0 +1,6 @@
+countNodes :: t:Tree a -> {Int|_v == size t}
+countNodes = \t . 
+  match t with
+    Empty -> zero
+    Node x4 x5 x6 -> plus one (plus
+                                 (countNodes x5) (countNodes x6))

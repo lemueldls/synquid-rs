@@ -1,0 +1,8 @@
+delete :: x:a -> xs:UList a -> {UList a|elems _v == elems xs - [x]}
+delete = \x . \xs . 
+    match xs with
+      Nil -> xs
+      Cons x3 x4 -> 
+        if x3 == x
+          then x4
+          else Cons x3 (delete x x4)

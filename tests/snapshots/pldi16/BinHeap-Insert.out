@@ -1,0 +1,11 @@
+insert :: t:Heap a -> x:a -> {Heap a|elems _v == elems t + [x]}
+insert = \t . \x . 
+    match t with
+      Empty -> Node x Empty Empty
+      Node x7 x8 x9 -> 
+        if (x <= x7) && (x7 <= x)
+          then t
+          else 
+            if x7 <= x
+              then Node x7 x8 (insert x9 x)
+              else Node x x8 (insert x9 x7)

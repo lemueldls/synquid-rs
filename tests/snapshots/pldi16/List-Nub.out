@@ -1,0 +1,8 @@
+nub :: xs:List a -> {UList a|elems _v == elems xs}
+nub = \xs . 
+  match xs with
+    Nil -> Nil
+    Cons x3 x4 -> 
+      if elem x3 x4
+        then nub x4
+        else Cons x3 (nub x4)

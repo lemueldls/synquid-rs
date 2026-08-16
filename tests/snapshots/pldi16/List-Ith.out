@@ -1,0 +1,8 @@
+ith :: <p :: Int -> a -> Bool> . xs:List a <p> -> i:{Int|0 <= _v && _v < len xs} -> {a|p i _v}
+ith = \xs . \i . 
+    match xs with
+      Nil -> error
+      Cons x3 x4 -> 
+        if i <= 0
+          then x3
+          else ith x4 (dec i)

@@ -1,0 +1,8 @@
+quickSort :: xs:List a -> {IList a|ilen _v == len xs && ielems _v == elems xs}
+quickSort = \xs . 
+  match xs with
+    Nil -> INil
+    Cons x3 x4 -> 
+      match partition x3 x4 with
+        Pair x9 x10 -> pivotAppend x3
+                         (quickSort x9) (quickSort x10)

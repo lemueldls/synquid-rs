@@ -1,0 +1,8 @@
+drop :: n:Nat -> xs:{List a|len _v >= n} -> {List a|len _v == len xs - n}
+drop = \n . \xs . 
+    if 0 != n
+      then 
+        match xs with
+          Nil -> error
+          Cons x3 x4 -> drop (dec n) x4
+      else xs

@@ -1,0 +1,11 @@
+split :: xs:List a -> {Pair {List a|abs (len xs - len _v * 2) <= 1} List a|len xs == len (fst _v) + len (snd _v) && elems xs == elems (fst _v) + elems (snd _v)}
+split = \xs . 
+  match xs with
+    Nil -> Pair xs xs
+    Cons x5 x6 -> 
+      match x6 with
+        Nil -> Pair x6 xs
+        Cons x11 x12 -> 
+          match split x12 with
+            Pair x16 x17 -> Pair (Cons x11
+                                    x16) (Cons x5 x17)
