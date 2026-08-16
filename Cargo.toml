@@ -10,6 +10,13 @@ itertools = { version = "0.15.0" }
 pretty = { version = "0.12.5" }
 z3 = { version = "0.20.2" }
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "synth"
+harness = false
+
 # [lints.rust]
 # unsafe_code = "warn"
 # missing_docs = "warn"
