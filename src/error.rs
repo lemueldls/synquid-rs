@@ -1,25 +1,46 @@
-use core::fmt;
-use std::{borrow::Cow, fmt::Debug, ops};
+//! Source positions and error kinds (mirror of `Synquid.Error`).
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SourcePos(Cow<'static, str>);
+use crate::{
+    pretty::{Doc, show_doc},
+    util::Id,
+};
 
-pub const NO_POS: SourcePos = SourcePos(Cow::Borrowed(""));
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SourcePos {
+    pub source_name: Id,
+    pub line: usize,
+    pub column: usize,
+}
 
-impl PartialOrd for SourcePos {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        // TODO: Test if correct
-        // self.0.start.partial_cmp(&other.0.start)
-        Some(self.0.cmp(&other.0))
+impl SourcePos {
+    #[must_use]
+    pub const fn source_line(&self) -> usize {
+        self.line
+    }
+
+    #[must_use]
+    pub const fn source_column(&self) -> usize {
+        self.column
+    }
+
+    #[must_use]
+    pub const fn source_name(&self) -> &Id {
+        &self.source_name
     }
 }
 
-impl Ord for SourcePos {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
+/// Dummy source position.
+#[must_use]
+pub fn no_pos() -> SourcePos {
+    SourcePos {
+        source_name: "<no file name>".to_string(),
+        line: 1,
+        column: 1,
     }
 }
 
+/// Anything with a source position attached.
+#[derive(Clone, Debug, PartialOrd, Ord, Hash)]
 pub struct Pos<A> {
     pub position: SourcePos,
     pub node: A,
@@ -27,30 +48,19 @@ pub struct Pos<A> {
 
 impl<A: PartialEq> PartialEq for Pos<A> {
     fn eq(&self, other: &Self) -> bool {
-        self.position == other.position && self.node == other.node
+        self.node == other.node
     }
 }
 
 impl<A: Eq> Eq for Pos<A> {}
 
-impl<A: Debug> fmt::Debug for Pos<A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Pos")
-            .field("position", &self.position)
-            .field("node", &self.node)
-            .finish()
+impl<A> Pos<A> {
+    pub const fn new(position: SourcePos, node: A) -> Self {
+        Pos { position, node }
     }
 }
 
-impl<A: Clone> Clone for Pos<A> {
-    fn clone(&self) -> Self {
-        Self {
-            position: self.position.clone(),
-            node: self.node.clone(),
-        }
-    }
-}
-
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ErrorKind {
     ParseError,
     ResolutionError,
@@ -58,8 +68,51 @@ pub enum ErrorKind {
     SynthesisError,
 }
 
+#[derive(Clone)]
 pub struct ErrorMessage {
     pub kind: ErrorKind,
     pub position: SourcePos,
-    pub description: String,
+    pub description: Doc,
+}
+
+impl std::fmt::Debug for ErrorMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ErrorMessage")
+            .field("kind", &self.kind)
+            .field("position", &self.position)
+            .field("description", &show_doc(&self.description))
+            .finish()
+    }
+}
+
+impl ErrorMessage {
+    #[must_use]
+    pub const fn new(kind: ErrorKind, position: SourcePos, description: Doc) -> Self {
+        ErrorMessage {
+            kind,
+            position,
+            description,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pos_eq_compares_node_only() {
+        let p1 = Pos::new(no_pos(), 1);
+        let p2 = Pos::new(
+            SourcePos {
+                source_name: "different".to_string(),
+                line: 2,
+                column: 3,
+            },
+            1,
+        );
+        assert_eq!(p1, p2);
+        let p3 = Pos::new(no_pos(), 2);
+        assert_ne!(p1, p3);
+    }
 }
