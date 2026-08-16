@@ -43,10 +43,3 @@ used_underscore_items = "allow"
 manual_let_else = "allow"
 map_unwrap_or = "allow"
 too_many_arguments = "allow"
-
-[dev-dependencies]
-criterion = "0.5"
-
-[[bench]]
-name = "synth"
-harness = false
