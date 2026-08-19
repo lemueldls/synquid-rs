@@ -1,0 +1,10 @@
+[package]
+name = "musfix"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+z3 = { version = "0.20.2" }
+
+[lints]
+workspace = true

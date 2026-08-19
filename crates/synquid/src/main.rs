@@ -4,15 +4,15 @@ use std::{fs, process::ExitCode};
 
 use clap::Parser;
 use synquid::{
-    cli::{cli_to_params, Cli, ExplorerParams, HornSolverParams, OutputFormat, SynquidParams},
+    cli::{Cli, ExplorerParams, HornSolverParams, OutputFormat, SynquidParams, cli_to_params},
     horn_solver::FixPointSolver,
     html,
     parser::parse_program,
     pretty::{
-        empty, hsp, parens, plain, pretty_error_msg, pretty_solution, pretty_spec,
-        program_node_count, render_pretty, show_doc, text, type_node_count, vsep, Doc, Pretty,
+        Doc, Pretty, empty, hsp, parens, plain, pretty_error_msg, pretty_solution, pretty_spec,
+        program_node_count, render_pretty, show_doc, text, type_node_count, vsep,
     },
-    program::{unresolved_spec, BareDeclaration, Declaration, Goal, RProgram},
+    program::{BareDeclaration, Declaration, Goal, RProgram, unresolved_spec},
     resolver::resolve_decls,
     synthesizer::synthesize,
     types::to_monotype,

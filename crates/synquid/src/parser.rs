@@ -21,14 +21,14 @@ use std::collections::BTreeMap;
 
 use crate::{
     error::{ErrorKind, ErrorMessage, Pos, SourcePos},
-    logic::{ffalse, ftrue, int_lit, BinOp, Formula, PredSig, Sort, UnOp, DONT_CARE},
+    logic::{BinOp, DONT_CARE, Formula, PredSig, Sort, UnOp, ffalse, ftrue, int_lit},
     pretty::text,
     program::{
-        untyped, BareDeclaration, BareProgram, Case, ConstructorSig, Declaration, MeasureCase,
-        Program,
+        BareDeclaration, BareProgram, Case, ConstructorSig, Declaration, MeasureCase, Program,
+        untyped,
     },
-    tokens::{bin_op_tokens, keywords, other_ops, un_op_tokens, COMMENT_START},
-    types::{arity, BaseType, RSchema, RType, SchemaSkeleton, TypeSkeleton},
+    tokens::{COMMENT_START, bin_op_tokens, keywords, other_ops, un_op_tokens},
+    types::{BaseType, RSchema, RType, SchemaSkeleton, TypeSkeleton, arity},
     util::Id,
 };
 
@@ -301,11 +301,13 @@ impl<'a> Parser<'a> {
     fn pos(&self) -> SourcePos {
         match self.cur() {
             Some(t) => t.pos(&self.source_name),
-            None => SourcePos {
-                source_name: self.source_name.clone(),
-                line: self.eof_pos.line,
-                column: self.eof_pos.column,
-            },
+            None => {
+                SourcePos {
+                    source_name: self.source_name.clone(),
+                    line: self.eof_pos.line,
+                    column: self.eof_pos.column,
+                }
+            }
         }
     }
 
@@ -366,10 +368,12 @@ impl<'a> Parser<'a> {
         match self.cur() {
             Some(t) if t.col == self.ref_col => Ok(()),
             Some(_) => Err(perr(self.pos(), "indentation mismatch")),
-            None => Err(perr(
-                self.pos(),
-                "end of input: expecting token at same indentation",
-            )),
+            None => {
+                Err(perr(
+                    self.pos(),
+                    "end of input: expecting token at same indentation",
+                ))
+            }
         }
     }
 
@@ -422,14 +426,18 @@ impl<'a> Parser<'a> {
     fn check_indent_at(&mut self, line: usize, col: usize) -> PRes<()> {
         match self.cur() {
             Some(t) if t.col == col => Ok(()),
-            Some(_) => Err(perr(
-                self.pos(),
-                format!("indentation mismatch (block started at line {line})"),
-            )),
-            None => Err(perr(
-                self.pos(),
-                "end of input: expecting token at same indentation",
-            )),
+            Some(_) => {
+                Err(perr(
+                    self.pos(),
+                    format!("indentation mismatch (block started at line {line})"),
+                ))
+            }
+            None => {
+                Err(perr(
+                    self.pos(),
+                    "end of input: expecting token at same indentation",
+                ))
+            }
         }
     }
 
@@ -1764,37 +1772,41 @@ delete = \\x . \\xs .
             _ => panic!("expected func"),
         }
         match &decls[1].node {
-            BareDeclaration::FuncDecl(_, sch) => match sch {
-                SchemaSkeleton::Monotype(TypeSkeleton::FunctionT(arg, a, b)) => {
-                    assert_eq!(arg, "x");
-                    assert!(matches!(&**a, TypeSkeleton::ScalarT(IntT, _)));
-                    match &**b {
-                        TypeSkeleton::FunctionT(y, aa, bb) => {
-                            assert_eq!(y, "arg0");
-                            assert!(matches!(&**aa, TypeSkeleton::ScalarT(IntT, _)));
-                            assert!(
-                                matches!(&**bb, TypeSkeleton::ScalarT(IntT, f) if matches!(f, Formula::Binary(BinOp::Ge, _, _)))
-                            );
+            BareDeclaration::FuncDecl(_, sch) => {
+                match sch {
+                    SchemaSkeleton::Monotype(TypeSkeleton::FunctionT(arg, a, b)) => {
+                        assert_eq!(arg, "x");
+                        assert!(matches!(&**a, TypeSkeleton::ScalarT(IntT, _)));
+                        match &**b {
+                            TypeSkeleton::FunctionT(y, aa, bb) => {
+                                assert_eq!(y, "arg0");
+                                assert!(matches!(&**aa, TypeSkeleton::ScalarT(IntT, _)));
+                                assert!(
+                                    matches!(&**bb, TypeSkeleton::ScalarT(IntT, f) if matches!(f, Formula::Binary(BinOp::Ge, _, _)))
+                                );
+                            }
+                            _ => panic!("expected function type"),
                         }
-                        _ => panic!("expected function type"),
                     }
+                    _ => panic!("expected monotype"),
                 }
-                _ => panic!("expected monotype"),
-            },
+            }
             _ => panic!("expected func"),
         }
         match &decls[2].node {
-            BareDeclaration::FuncDecl(_, sch) => match sch {
-                SchemaSkeleton::Monotype(TypeSkeleton::FunctionT(arg, a, b)) => {
-                    assert_eq!(arg, "arg0");
-                    assert!(matches!(
-                        &**a,
-                        TypeSkeleton::ScalarT(DatatypeT(name, _, _), _) if name == "List"
-                    ));
-                    assert!(matches!(&**b, TypeSkeleton::ScalarT(BoolT, _)));
+            BareDeclaration::FuncDecl(_, sch) => {
+                match sch {
+                    SchemaSkeleton::Monotype(TypeSkeleton::FunctionT(arg, a, b)) => {
+                        assert_eq!(arg, "arg0");
+                        assert!(matches!(
+                            &**a,
+                            TypeSkeleton::ScalarT(DatatypeT(name, _, _), _) if name == "List"
+                        ));
+                        assert!(matches!(&**b, TypeSkeleton::ScalarT(BoolT, _)));
+                    }
+                    _ => panic!("expected monotype"),
                 }
-                _ => panic!("expected monotype"),
-            },
+            }
             _ => panic!("expected func"),
         }
     }
@@ -1808,14 +1820,16 @@ qualifier {x <= y, x != y}
         let decls = parse(input);
         assert_eq!(decls.len(), 2);
         match &decls[0].node {
-            BareDeclaration::FuncDecl(_, sch) => match sch {
-                SchemaSkeleton::ForallP(sig, _) => {
-                    assert_eq!(sig.pred_sig_name, "p");
-                    assert_eq!(sig.pred_sig_arg_sorts, vec![IntS, VarS("a".to_string())]);
-                    assert_eq!(sig.pred_sig_res_sort, BoolS);
+            BareDeclaration::FuncDecl(_, sch) => {
+                match sch {
+                    SchemaSkeleton::ForallP(sig, _) => {
+                        assert_eq!(sig.pred_sig_name, "p");
+                        assert_eq!(sig.pred_sig_arg_sorts, vec![IntS, VarS("a".to_string())]);
+                        assert_eq!(sig.pred_sig_res_sort, BoolS);
+                    }
+                    _ => panic!("expected forall"),
                 }
-                _ => panic!("expected forall"),
-            },
+            }
             _ => panic!("expected func"),
         }
         match &decls[1].node {
@@ -1838,9 +1852,11 @@ qualifier {x <= y, x != y}
              inline i a b = x in elems _v\n",
         );
         assert_eq!(decls.len(), 5);
-        let inline = |i: usize| match &decls[i].node {
-            BareDeclaration::InlineDecl(_, _, body) => body.clone(),
-            _ => panic!("expected inline"),
+        let inline = |i: usize| {
+            match &decls[i].node {
+                BareDeclaration::InlineDecl(_, _, body) => body.clone(),
+                _ => panic!("expected inline"),
+            }
         };
         // abs: if x >= 0 then x else -x
         match inline(0) {
@@ -1901,10 +1917,12 @@ bar = match x with
             _ => panic!("expected goal"),
         }
         match &decls[1].node {
-            BareDeclaration::SynthesisGoal(_, body) => match &body.content {
-                PMatch(_, cases) => assert_eq!(cases.len(), 2),
-                _ => panic!("expected match"),
-            },
+            BareDeclaration::SynthesisGoal(_, body) => {
+                match &body.content {
+                    PMatch(_, cases) => assert_eq!(cases.len(), 2),
+                    _ => panic!("expected match"),
+                }
+            }
             _ => panic!("expected goal"),
         }
     }

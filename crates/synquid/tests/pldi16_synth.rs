@@ -10,9 +10,16 @@
 use std::{
     collections::HashMap,
     fs,
+    path::Path,
     process::Command,
     time::{Duration, Instant},
 };
+
+/// Path of a fixture under the workspace root (this crate's tests run with
+/// the package manifest dir as CWD).
+fn repo_root() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
 
 /// Per-benchmark command-line flags, mirroring `specs/test/pldi16/run_all.py`'s
 /// `ALL_BENCHMARKS` table (the source of truth). Benchmarks not listed run
@@ -96,7 +103,7 @@ fn run_bench(name: &str, timeout_secs: u64) -> (i32, String) {
         }
     }
     let mut child = cmd
-        .arg(format!("specs/test/pldi16/{name}.sq"))
+        .arg(repo_root().join(format!("specs/test/pldi16/{name}.sq")))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -123,7 +130,7 @@ fn run_bench(name: &str, timeout_secs: u64) -> (i32, String) {
 }
 
 fn benchmark_names() -> Vec<String> {
-    let dir = fs::read_dir("specs/test/pldi16")
+    let dir = fs::read_dir(repo_root().join("specs/test/pldi16"))
         .unwrap()
         .map(|e| e.unwrap().path())
         .filter(|p| p.extension().map_or(false, |x| x == "sq"))
@@ -138,7 +145,9 @@ fn benchmark_names() -> Vec<String> {
 }
 
 fn snapshot_path(name: &str) -> std::path::PathBuf {
-    std::path::Path::new("tests/snapshots/pldi16").join(format!("{name}.out"))
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/snapshots/pldi16")
+        .join(format!("{name}.out"))
 }
 
 /// M9 gate: with the run_all.py per-benchmark flags every benchmark must

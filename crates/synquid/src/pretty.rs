@@ -4,7 +4,8 @@
 //! `Text.PrettyPrint.ANSI.Leijen` (ansi-wl-pprint) used by the reference,
 //! including the exact `best`/`fits`/`scan` layout algorithm,
 //! `renderPretty` (ribbon fraction 0.4, used by `show`/`putDoc`/`hPutDoc`)
-//! and ANSI SGR coloring. See the ansi-wl-pprint source for the layout algorithm.
+//! and ANSI SGR coloring. See the ansi-wl-pprint source for the layout
+//! algorithm.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -14,16 +15,16 @@ use std::{
 use crate::{
     error::{ErrorKind, ErrorMessage, Pos},
     logic::{
-        ftrue, BinOp, Candidate, Formula, PredSig, QSpace, Sort, SortConstraint, UnOp, DONT_CARE,
-        VALUE_VAR_NAME,
+        BinOp, Candidate, DONT_CARE, Formula, PredSig, QSpace, Sort, SortConstraint, UnOp,
+        VALUE_VAR_NAME, ftrue,
     },
     program::{
-        all_symbols, unresolved_spec, BareDeclaration, BareProgram, Case, Constraint,
-        ConstructorSig, Environment, Goal, MeasureCase, MeasureDef, Program,
+        BareDeclaration, BareProgram, Case, Constraint, ConstructorSig, Environment, Goal,
+        MeasureCase, MeasureDef, Program, all_symbols, unresolved_spec,
     },
     tokens::{bin_op_token_str, un_op_token_str},
     types::{BaseType, RType, SType, SchemaSkeleton, TypeSkeleton, TypeSubstitution},
-    util::{as_integer, remove_domain, Id},
+    util::{Id, as_integer, remove_domain},
 };
 
 /// A pretty document (a shared handle to a `DocNode` tree).
@@ -307,7 +308,8 @@ pub fn fill(f: usize, d: Doc) -> Doc {
     )
 }
 
-/// Right-align a simple document: pad with spaces to width `w` (`lfill`; only works for documents that compact to a single `SText`).
+/// Right-align a simple document: pad with spaces to width `w` (`lfill`; only
+/// works for documents that compact to a single `SText`).
 #[must_use]
 pub fn lfill(w: usize, d: Doc) -> Doc {
     match render_compact(&d) {
@@ -425,12 +427,14 @@ pub fn sep(ds: Vec<Doc>) -> Doc {
     group(vsep(ds))
 }
 
-/// Concatenate documents horizontally, with spaces (`hsep`: empty documents are skipped).
+/// Concatenate documents horizontally, with spaces (`hsep`: empty documents are
+/// skipped).
 pub fn hsep(ds: Vec<Doc>) -> Doc {
     foldr1(hsp, ds)
 }
 
-/// Concatenate documents vertically, with newlines (`vsep`: empty documents are skipped).
+/// Concatenate documents vertically, with newlines (`vsep`: empty documents are
+/// skipped).
 pub fn vsep(ds: Vec<Doc>) -> Doc {
     foldr1(vsp, ds)
 }
@@ -587,21 +591,13 @@ pub fn spaces_doc(d: Doc) -> Doc {
 /// Conditionally enclose in parentheses (`condParens`).
 #[must_use]
 pub fn cond_parens(b: bool, d: Doc) -> Doc {
-    if b {
-        parens(d)
-    } else {
-        d
-    }
+    if b { parens(d) } else { d }
 }
 
 /// Conditionally produce a document (`option`).
 #[must_use]
 pub fn option(b: bool, d: Doc) -> Doc {
-    if b {
-        d
-    } else {
-        empty()
-    }
+    if b { d } else { empty() }
 }
 
 /// Convert an `Option` value to a document (`optionMaybe`).
@@ -712,14 +708,16 @@ fn sgr_code(layer: ConsoleLayer, intensity: ColorIntensity, c: Color) -> String 
     format!(
         "{}{}",
         match layer {
-            ConsoleLayer::Foreground => match intensity {
-                ColorIntensity::Vivid => "9",
-                ColorIntensity::Dull => "3",
-            },
-            ConsoleLayer::Background => match intensity {
-                ColorIntensity::Vivid => "10",
-                ColorIntensity::Dull => "4",
-            },
+            ConsoleLayer::Foreground =>
+                match intensity {
+                    ColorIntensity::Vivid => "9",
+                    ColorIntensity::Dull => "3",
+                },
+            ConsoleLayer::Background =>
+                match intensity {
+                    ColorIntensity::Vivid => "10",
+                    ColorIntensity::Dull => "4",
+                },
         },
         match c {
             Color::Black => "0",
@@ -770,14 +768,10 @@ pub fn render_pretty(rfrac: f64, width: usize, d: &Doc) -> SimpleDoc {
         0,
         isize::min(width as isize, (width as f64 * rfrac).round() as isize),
     );
-    let out = best(
-        width as isize,
-        r,
+    let out = best(width as isize, r, 0, 0, SgrState::default(), vec![(
         0,
-        0,
-        SgrState::default(),
-        vec![(0, d.clone())],
-    );
+        d.clone(),
+    )]);
     simple_doc_of(out)
 }
 
@@ -867,14 +861,18 @@ fn best(
                 out.push(OutTok::Sgr(color_code(*l, *ci, *c)));
                 let old = state;
                 state = match l {
-                    ConsoleLayer::Foreground => SgrState {
-                        fc: Some((*ci, *c)),
-                        ..state
-                    },
-                    ConsoleLayer::Background => SgrState {
-                        bc: Some((*ci, *c)),
-                        ..state
-                    },
+                    ConsoleLayer::Foreground => {
+                        SgrState {
+                            fc: Some((*ci, *c)),
+                            ..state
+                        }
+                    }
+                    ConsoleLayer::Background => {
+                        SgrState {
+                            bc: Some((*ci, *c)),
+                            ..state
+                        }
+                    }
                 };
                 stack.push((i, DocNode::node(DocNode::RestoreFormat(old))));
                 stack.push((i, x.clone()));
@@ -1060,11 +1058,7 @@ impl Pretty for String {
 
 impl Pretty for bool {
     fn pretty(&self) -> Doc {
-        if *self {
-            text("True")
-        } else {
-            text("False")
-        }
+        if *self { text("True") } else { text("False") }
     }
 }
 
@@ -1093,21 +1087,23 @@ pub const fn power(fml: &Formula) -> usize {
         Formula::Pred(_, _, args) | Formula::Cons(_, _, args) if args.is_empty() => 10,
         Formula::Pred(..) | Formula::Cons(..) => 9,
         Formula::Unary(..) => 8,
-        Formula::Binary(op, ..) => match op {
-            BinOp::Times | BinOp::Intersect => 7,
-            BinOp::Plus | BinOp::Minus | BinOp::Union | BinOp::Diff => 6,
-            BinOp::Eq
-            | BinOp::Neq
-            | BinOp::Lt
-            | BinOp::Le
-            | BinOp::Gt
-            | BinOp::Ge
-            | BinOp::Member
-            | BinOp::Subset => 5,
-            BinOp::And | BinOp::Or => 4,
-            BinOp::Implies => 3,
-            BinOp::Iff => 2,
-        },
+        Formula::Binary(op, ..) => {
+            match op {
+                BinOp::Times | BinOp::Intersect => 7,
+                BinOp::Plus | BinOp::Minus | BinOp::Union | BinOp::Diff => 6,
+                BinOp::Eq
+                | BinOp::Neq
+                | BinOp::Lt
+                | BinOp::Le
+                | BinOp::Gt
+                | BinOp::Ge
+                | BinOp::Member
+                | BinOp::Subset => 5,
+                BinOp::And | BinOp::Or => 4,
+                BinOp::Implies => 3,
+                BinOp::Iff => 2,
+            }
+        }
         Formula::All(..) | Formula::Ite(..) => 1,
         _ => 10,
     }
@@ -1158,14 +1154,18 @@ pub fn fml_doc_at(n: usize, fml: &Formula) -> Doc {
                 ),
             )
         }
-        Formula::Pred(_, name, args) => hsp(
-            text(name),
-            hsep(args.iter().map(|a| fml_doc_at(n_ctx, a)).collect()),
-        ),
-        Formula::Cons(_, name, args) => hl_parens(hsp(
-            text(name),
-            hsep(args.iter().map(|a| fml_doc_at(n_ctx, a)).collect()),
-        )),
+        Formula::Pred(_, name, args) => {
+            hsp(
+                text(name),
+                hsep(args.iter().map(|a| fml_doc_at(n_ctx, a)).collect()),
+            )
+        }
+        Formula::Cons(_, name, args) => {
+            hl_parens(hsp(
+                text(name),
+                hsep(args.iter().map(|a| fml_doc_at(n_ctx, a)).collect()),
+            ))
+        }
         Formula::All(x, e) => {
             let kw = |s: &str| keyword(s);
             hsp(
@@ -1276,16 +1276,18 @@ pub fn type_power(t: &RType) -> usize {
 pub fn pretty_type_at(n: usize, t: &RType) -> Doc {
     let n_ctx = type_power(t);
     let body = match t {
-        TypeSkeleton::ScalarT(base, fml) => match fml {
-            Formula::BoolLit(true) => pretty_base::<Formula>(t_arg_pretty_ctx, base),
-            fml => {
-                let inner = beside(
-                    pretty_base::<Formula>(t_arg_pretty_ctx, base),
-                    maybe_operator("|"),
-                );
-                hl_braces(beside(inner, fml.pretty()))
+        TypeSkeleton::ScalarT(base, fml) => {
+            match fml {
+                Formula::BoolLit(true) => pretty_base::<Formula>(t_arg_pretty_ctx, base),
+                fml => {
+                    let inner = beside(
+                        pretty_base::<Formula>(t_arg_pretty_ctx, base),
+                        maybe_operator("|"),
+                    );
+                    hl_braces(beside(inner, fml.pretty()))
+                }
             }
-        },
+        }
         TypeSkeleton::AnyT => text("_"),
         TypeSkeleton::FunctionT(x, t1, t2) => {
             // `text x <> operator ":" <+> prettyTypeAt n' t1 <+> operator "->" <+>
@@ -1380,15 +1382,15 @@ impl Pretty for TypeSkeleton<Formula> {
 
 /// Pretty-printed schema (`prettySchema`).
 pub fn pretty_schema<R>(sch: &SchemaSkeleton<R>) -> Doc
-where
-    TypeSkeleton<R>: Pretty,
-{
+where TypeSkeleton<R>: Pretty {
     match sch {
         SchemaSkeleton::Monotype(t) => t.pretty(),
-        SchemaSkeleton::ForallT(a, sch) => hsp(
-            hl_angles(text(a)),
-            hsp(maybe_operator("."), pretty_schema(sch)),
-        ),
+        SchemaSkeleton::ForallT(a, sch) => {
+            hsp(
+                hl_angles(text(a)),
+                hsp(maybe_operator("."), pretty_schema(sch)),
+            )
+        }
         SchemaSkeleton::ForallP(sig, sch) => {
             hsp(sig.pretty(), hsp(maybe_operator("."), pretty_schema(sch)))
         }
@@ -1514,31 +1516,31 @@ pub fn hl_brackets(d: Doc) -> Doc {
 /// Conditionally enclose in highlighted parentheses (`condHlParens`).
 #[must_use]
 pub fn cond_hl_parens(b: bool, d: Doc) -> Doc {
-    if b {
-        hl_parens(d)
-    } else {
-        d
-    }
+    if b { hl_parens(d) } else { d }
 }
 
 /// Pretty-printed program with syntax highlighting (`prettyProgram`).
 fn pretty_program_f<T: Pretty>(p: &Program<T>) -> Doc {
-    let opt_parens = |p: &Program<T>| match &p.content {
-        BareProgram::PSymbol(_) => pretty_program_f(p),
-        BareProgram::PHole => pretty_program_f(p),
-        _ => hl_parens(pretty_program_f(p)),
+    let opt_parens = |p: &Program<T>| {
+        match &p.content {
+            BareProgram::PSymbol(_) => pretty_program_f(p),
+            BareProgram::PHole => pretty_program_f(p),
+            _ => hl_parens(pretty_program_f(p)),
+        }
     };
     match &p.content {
-        BareProgram::PSymbol(s) => match as_integer(s) {
-            Some(n) => int_literal(n),
-            None => {
-                if s == VALUE_VAR_NAME {
-                    special(s)
-                } else {
-                    text(s)
+        BareProgram::PSymbol(s) => {
+            match as_integer(s) {
+                Some(n) => int_literal(n),
+                None => {
+                    if s == VALUE_VAR_NAME {
+                        special(s)
+                    } else {
+                        text(s)
+                    }
                 }
             }
-        },
+        }
         BareProgram::PApp(f, x) => {
             let prefix = hang(TAB, soft_break(pretty_program_f(f), opt_parens(x)));
             match &f.content {
@@ -1552,25 +1554,27 @@ fn pretty_program_f<T: Pretty>(p: &Program<T>) -> Doc {
                         prefix
                     }
                 }
-                BareProgram::PApp(g, y) => match &g.content {
-                    BareProgram::PSymbol(name) => {
-                        if crate::tokens::bin_op_tokens()
-                            .iter()
-                            .any(|(_, t)| *t == name)
-                        {
-                            hang(
-                                TAB,
-                                soft_break(
-                                    opt_parens(y),
-                                    soft_break(maybe_operator(name), opt_parens(x)),
-                                ),
-                            )
-                        } else {
-                            prefix
+                BareProgram::PApp(g, y) => {
+                    match &g.content {
+                        BareProgram::PSymbol(name) => {
+                            if crate::tokens::bin_op_tokens()
+                                .iter()
+                                .any(|(_, t)| *t == name)
+                            {
+                                hang(
+                                    TAB,
+                                    soft_break(
+                                        opt_parens(y),
+                                        soft_break(maybe_operator(name), opt_parens(x)),
+                                    ),
+                                )
+                            } else {
+                                prefix
+                            }
                         }
+                        _ => prefix,
                     }
-                    _ => prefix,
-                },
+                }
                 _ => prefix,
             }
         }
@@ -1713,36 +1717,42 @@ impl std::fmt::Display for SortConstraint {
 #[must_use]
 pub fn pretty_constraint(c: &Constraint) -> Doc {
     match c {
-        Constraint::Subtype(env, t1, t2, false, label) => hsp(
+        Constraint::Subtype(env, t1, t2, false, label) => {
             hsp(
                 hsp(
-                    hsp(env.pretty(), maybe_operator("|-")),
-                    hsp(t1.pretty(), maybe_operator("<:")),
+                    hsp(
+                        hsp(env.pretty(), maybe_operator("|-")),
+                        hsp(t1.pretty(), maybe_operator("<:")),
+                    ),
+                    t2.pretty(),
                 ),
-                t2.pretty(),
-            ),
-            parens(text(label)),
-        ),
-        Constraint::Subtype(env, t1, t2, true, label) => hsp(
+                parens(text(label)),
+            )
+        }
+        Constraint::Subtype(env, t1, t2, true, label) => {
             hsp(
                 hsp(
-                    hsp(env.pretty(), maybe_operator("|-")),
-                    hsp(t1.pretty(), maybe_operator("/\\")),
+                    hsp(
+                        hsp(env.pretty(), maybe_operator("|-")),
+                        hsp(t1.pretty(), maybe_operator("/\\")),
+                    ),
+                    t2.pretty(),
                 ),
-                t2.pretty(),
-            ),
-            parens(text(label)),
-        ),
+                parens(text(label)),
+            )
+        }
         Constraint::WellFormed(env, t) => {
             hsp(pretty_bindings(env), hsp(maybe_operator("|-"), t.pretty()))
         }
         Constraint::WellFormedCond(env, c) => {
             hsp(pretty_bindings(env), hsp(maybe_operator("|-"), c.pretty()))
         }
-        Constraint::WellFormedMatchCond(env, c) => hsp(
-            pretty_bindings(env),
-            hsp(maybe_operator("|- (match)"), c.pretty()),
-        ),
+        Constraint::WellFormedMatchCond(env, c) => {
+            hsp(
+                pretty_bindings(env),
+                hsp(maybe_operator("|- (match)"), c.pretty()),
+            )
+        }
         Constraint::WellFormedPredicate(_, sorts, p) => {
             let arrows: Vec<Doc> = sorts
                 .iter()
@@ -1836,10 +1846,12 @@ impl Pretty for BareDeclaration {
                     hsp(maybe_operator("="), t.pretty()),
                 )
             }
-            BareDeclaration::QualifierDecl(fmls) => hsp(
-                keyword("qualifier"),
-                hl_braces(comma_sep(fmls.iter().map(|f| f.pretty()).collect())),
-            ),
+            BareDeclaration::QualifierDecl(fmls) => {
+                hsp(
+                    keyword("qualifier"),
+                    hl_braces(comma_sep(fmls.iter().map(|f| f.pretty()).collect())),
+                )
+            }
             BareDeclaration::FuncDecl(name, t) => {
                 hsp(text(name), hsp(maybe_operator("::"), t.pretty()))
             }
@@ -2170,12 +2182,10 @@ mod tests {
         // Mirrors the reference doc example: `text "list" <+> (list ...)`.
         let d = hsp(
             text("list"),
-            enclose_sep(
-                &lparen(),
-                &rparen(),
-                &comma(),
-                vec![text("a"), text("some-very-long-element-that-does-not-fit")],
-            ),
+            enclose_sep(&lparen(), &rparen(), &comma(), vec![
+                text("a"),
+                text("some-very-long-element-that-does-not-fit"),
+            ]),
         );
         // "(a,some...)" is longer than the ribbon width (0.4 * 80), so break;
         // separators are glued to the front of following elements.

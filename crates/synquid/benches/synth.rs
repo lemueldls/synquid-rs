@@ -3,7 +3,7 @@
 //!
 //! Run with: `cargo bench --bench synth -- --nocapture`
 
-use std::fs;
+use std::{fs, path::Path};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use synquid::{
@@ -15,7 +15,12 @@ use synquid::{
 };
 
 fn synth_file(name: &str) {
-    let src = fs::read_to_string(format!("specs/test/pldi16/{name}.sq")).unwrap();
+    let src = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../specs/test/pldi16")
+            .join(format!("{name}.sq")),
+    )
+    .unwrap();
     let decls = parse_program(&src, name).unwrap();
     let (goals, cquals, tquals) = resolve_decls(&decls).unwrap();
     let goal = &goals[0];

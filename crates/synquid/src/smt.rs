@@ -9,11 +9,13 @@
 //! through `ControlMap` (`Bimap<Formula, u64>`), which is context-independent.
 //!
 //! Scope semantics mirror the reference exactly:
-//! - `isSat` uses `local` = `push`/`pop` around `assert >> check`,
-//!   so the assertion does **not** persist across calls.
-//! - `getAllMUSs` wraps the whole MARCO loop in one `push`/`pop`
-//!   per solver; `minimize`/`maximize` each run inside their
-//!   own `local`.
+//! - `isSat` uses `local` = `push`/`pop` around `assert >> check`, so the
+//!   assertion does **not** persist across calls.
+//! - `getAllMUSs` (the MARCO loop, implemented in the `musfix` crate and driven
+//!   through the [`SmtEngine`] methods implemented below) wraps the whole loop
+//!   in one `push`/`pop` per solver; `minimize`/`maximize` each run inside
+//!   their own `local`. `Unknown` handling and the panic/expect messages of the
+//!   reference are preserved via `musfix::CheckResult`.
 //! - The `vars`/`functions`/`sorts` caches and control-literal tables are
 //!   persistent (never rolled back), matching the reference's `Z3Data` maps.
 //!
@@ -26,38 +28,21 @@ use bimap::BiBTreeMap;
 
 /// Backwards-compatible alias keeping the plan's naming (`BiMap`).
 type BiMap<L, R> = BiBTreeMap<L, R>;
+use musfix::{CheckResult, SmtEngine, get_all_mus};
 use z3::{
-    ast::{self, Ast, Set},
     DatatypeAccessor, DatatypeBuilder, FuncDecl, Model, SatResult, Solver, Sort as ZSort,
+    ast::{self, Ast, Set},
 };
 
 use crate::{
-    logic::{and_clean, fnot, implies, BinOp, Formula, Sort, UnOp},
-    program::{all_symbols, DatatypeDef, Environment},
-    types::{all_args, to_monotype, RSchema},
+    logic::{BinOp, Formula, Sort, UnOp, and_clean, fnot, implies},
+    program::{DatatypeDef, Environment, all_symbols},
+    types::{RSchema, all_args, to_monotype},
     util::Id,
 };
 
 /// Z3 AST in a generic (sort-erased) form; the reference uses a single `AST`.
 type ZAst = ast::Dynamic;
-
-/// Split `xs` according to a predicate, preserving order (mirrors
-/// `Data.List.partition` used by `partitionM` in the reference).
-fn partition<T>(xs: &[T], keep: impl Fn(&T) -> bool) -> (Vec<T>, Vec<T>)
-where
-    T: Clone,
-{
-    let mut yes = Vec::new();
-    let mut no = Vec::new();
-    for x in xs {
-        if keep(x) {
-            yes.push(x.clone());
-        } else {
-            no.push(x.clone());
-        }
-    }
-    (yes, no)
-}
 
 /// Control literals for MARCO. The reference stores `Bimap Formula AST` for
 /// each of the two solvers; the crate's ASTs are not hashable, so numeric
@@ -115,16 +100,19 @@ impl Z3Runtime {
     pub fn total_us(&self) -> u128 {
         self.total_us
     }
+
     /// Number of `is_sat` calls.
     #[must_use]
     pub fn sat_calls(&self) -> u64 {
         self.sat_calls
     }
+
     /// Number of `get_all_mus` calls.
     #[must_use]
     pub fn mus_calls(&self) -> u64 {
         self.mus_calls
     }
+
     /// Create a runtime and populate it with the definitions of `env`.
     ///
     /// Mirrors `MonadSMT.initSolver`: disables MBQI on the main
@@ -170,8 +158,10 @@ impl Z3Runtime {
     /// `getAllMUSs`: all minimal unsatisfiable subsets of
     /// `fmls` that contain `must_have`, assuming `assumption`.
     ///
-    /// Note: the returned cores are in discovery order and contain the
-    /// *formulas* of `fmls` (excluding `must_have`), like the reference.
+    /// The MARCO loop itself lives in the `musfix` crate; this method wires
+    /// the persistent `Z3Runtime` state (control-literal cache, both solvers)
+    /// into its [`SmtEngine`] implementation and keeps the timing/mus-call
+    /// accounting here.
     pub fn get_all_mus(
         &mut self,
         assumption: &Formula,
@@ -180,187 +170,9 @@ impl Z3Runtime {
     ) -> Vec<Vec<Formula>> {
         self.mus_calls += 1;
         let t = std::time::Instant::now();
-        self.main_solver.push();
-        self.aux_solver.push();
-
-        let mut all_fmls = vec![must_have.clone()];
-        all_fmls.extend_from_slice(fmls);
-        let control_lits: Vec<u64> = all_fmls
-            .iter()
-            .map(|fml| self.get_control_lit(fml.clone()))
-            .collect();
-        let must_have_lit = control_lits[0];
-
-        let assumption_ast = self.fml_to_ast_bool(assumption);
-        self.main_solver.assert(&assumption_ast);
-        for (&lit, fml) in control_lits.iter().zip(&all_fmls) {
-            let fml_ast = self.fml_to_ast_bool(fml);
-            let assert = self.control_lit_main(lit).implies(&fml_ast);
-            self.main_solver.assert(&assert);
-        }
-        self.aux_solver.assert(self.control_lit_aux(must_have_lit));
-
-        let result = self.get_all_mus_loop(&control_lits, must_have_lit, Vec::new());
-
-        self.aux_solver.pop(1);
-        self.main_solver.pop(1);
+        let result = get_all_mus(self, assumption, must_have, fmls);
         self.total_us += t.elapsed().as_micros();
         result
-    }
-
-    /// `getAllMUSs'`: the MARCO main loop.
-    fn get_all_mus_loop(
-        &self,
-        control_lits_aux: &[u64],
-        must_have: u64,
-        mut cores: Vec<Vec<Formula>>,
-    ) -> Vec<Vec<Formula>> {
-        loop {
-            let Some((seed, rest)) = self.get_next_seed(control_lits_aux) else {
-                return cores;
-            };
-            let seed_asts: Vec<ast::Bool> = seed
-                .iter()
-                .map(|&lit| self.control_lit_main(lit).clone())
-                .collect();
-            if self.main_solver.check_assumptions(&seed_asts) == SatResult::Unsat {
-                let mus = self.minimize(&self.main_solver.get_unsat_core());
-                self.block_up(&mus);
-                let unsat_fmls: Vec<Formula> = mus
-                    .iter()
-                    .filter(|&&lit| lit != must_have)
-                    .map(|&lit| self.lit_to_fml(lit))
-                    .collect();
-                if mus.contains(&must_have) {
-                    cores.push(unsat_fmls);
-                }
-            } else {
-                let mss = self.maximize(&seed, &rest);
-                self.block_down(&mss, control_lits_aux);
-            }
-        }
-    }
-
-    /// `getNextSeed`: an unexplored subset of the control
-    /// literals, from a model of the auxiliary solver; `None` means the
-    /// search space is exhausted. Returns the (seed, rest) split (literals
-    /// selected true / false by the model, biased towards true).
-    fn get_next_seed(&self, control_lits_aux: &[u64]) -> Option<(Vec<u64>, Vec<u64>)> {
-        let (res, model_mb) = (self.aux_solver.check(), self.aux_solver.get_model());
-        match res {
-            SatResult::Unsat => None,
-            SatResult::Sat => {
-                let model = model_mb.expect("getNextSeed: sat but no model");
-                let (seed, rest) = partition(control_lits_aux, |&lit| {
-                    self.get_ctrl_lit_model(true, &model, lit)
-                });
-                Some((seed, rest))
-            }
-            SatResult::Unknown => panic!("getNextSeed: Z3 returned Unknown"),
-        }
-    }
-
-    /// `getCtrlLitModel`: the value of auxiliary literal `lit`
-    /// in `model`, defaulting to `bias` when unconstrained.
-    fn get_ctrl_lit_model(&self, bias: bool, model: &Model, lit: u64) -> bool {
-        let value = model
-            .eval(self.control_lit_aux(lit), true)
-            .and_then(|b| b.as_bool());
-        value.unwrap_or(bias)
-    }
-
-    /// `blockUp`: mark all supersets of the core as explored by
-    /// asserting in the auxiliary solver that not all of its literals hold.
-    fn block_up(&self, mus: &[u64]) {
-        let nots: Vec<ast::Bool> = mus
-            .iter()
-            .map(|&lit| self.control_lit_aux(lit).not())
-            .collect();
-        self.aux_solver.assert(ast::Bool::or(&nots));
-    }
-
-    /// `blockDown`: mark all subsets of the MSS as explored by
-    /// asserting in the auxiliary solver that some literal outside it holds
-    /// (or `false` when nothing is left outside).
-    fn block_down(&self, mss: &[u64], control_lits_aux: &[u64]) {
-        let mss_set: BTreeSet<u64> = mss.iter().copied().collect();
-        let rest: Vec<ast::Bool> = control_lits_aux
-            .iter()
-            .filter(|lit| !mss_set.contains(lit))
-            .map(|&lit| self.control_lit_aux(lit).clone())
-            .collect();
-        if rest.is_empty() {
-            self.aux_solver.assert(ast::Bool::from_bool(false));
-        } else {
-            self.aux_solver.assert(ast::Bool::or(&rest));
-        }
-    }
-
-    /// `minimize`: greedily shrink an unsat set to a minimal
-    /// unsat subset, inside its own `local` (push/pop): the required
-    /// literals are asserted within that scope only.
-    fn minimize(&self, unsat_core: &[ast::Bool]) -> Vec<u64> {
-        self.main_solver.push();
-        let mut rest: Vec<u64> = unsat_core.iter().map(|lit| self.lit_id_of(lit)).collect();
-        let mut checked: Vec<u64> = Vec::new();
-        while let Some(lit) = rest.first().copied() {
-            rest.remove(0);
-            let assumptions: Vec<ast::Bool> = rest
-                .iter()
-                .map(|&id| self.control_lit_main(id).clone())
-                .collect();
-            if self.main_solver.check_assumptions(&assumptions) == SatResult::Unsat {
-                // lit can be omitted: drop it.
-            } else {
-                self.main_solver.assert(self.control_lit_main(lit));
-                checked.push(lit);
-            }
-        }
-        self.main_solver.pop(1);
-        checked
-    }
-
-    /// `maximize`: grow a satisfiable seed to a maximal
-    /// satisfiable subset, inside its own `local` (push/pop).
-    fn maximize(&self, checked0: &[u64], rest0: &[u64]) -> Vec<u64> {
-        self.main_solver.push();
-        let mut checked: Vec<u64> = checked0.to_vec();
-        let mut rest: Vec<u64> = rest0.to_vec();
-        for &lit in &checked {
-            self.main_solver.assert(self.control_lit_main(lit));
-        }
-        loop {
-            if rest.is_empty() {
-                break;
-            }
-            let or_rest: Vec<ast::Bool> = rest
-                .iter()
-                .map(|&id| self.control_lit_main(id).clone())
-                .collect();
-            self.main_solver.assert(ast::Bool::or(&or_rest));
-            let (res, model_mb) = (self.main_solver.check(), self.main_solver.get_model());
-            if res == SatResult::Unsat {
-                break; // checked is maximal
-            }
-            let model = model_mb.expect("maximize: sat but no model");
-            let (set_rest, unset_rest): (Vec<u64>, Vec<u64>) =
-                partition(&rest, |&lit| self.get_main_lit_model(true, &model, lit));
-            for &lit in &set_rest {
-                self.main_solver.assert(self.control_lit_main(lit));
-            }
-            checked.extend(&set_rest);
-            rest = unset_rest;
-        }
-        self.main_solver.pop(1);
-        checked
-    }
-
-    /// Model value of a *main*-solver control literal (used by `maximize`).
-    fn get_main_lit_model(&self, bias: bool, model: &Model, lit: u64) -> bool {
-        let value = model
-            .eval(self.control_lit_main(lit), true)
-            .and_then(|b| b.as_bool());
-        value.unwrap_or(bias)
     }
 
     /// `getControlLits`: the control literal for a formula,
@@ -433,9 +245,11 @@ impl Z3Runtime {
         for ctor_name in &dt_def.constructors {
             let field_sorts: Vec<(Id, Sort)> = all_args(&to_monotype(&symbols[ctor_name]))
                 .into_iter()
-                .map(|arg| match arg {
-                    Formula::Var(s, name) => (name, *s),
-                    _ => panic!("convertCtor: constructor argument is not a variable"),
+                .map(|arg| {
+                    match arg {
+                        Formula::Var(s, name) => (name, *s),
+                        _ => panic!("convertCtor: constructor argument is not a variable"),
+                    }
                 })
                 .collect();
             let mut fields: Vec<(&str, DatatypeAccessor)> = Vec::with_capacity(field_sorts.len());
@@ -548,21 +362,27 @@ impl Z3Runtime {
                     Formula::Binary(*op, Box::new(e1s), Box::new(e2s))
                 }
             }
-            Formula::Ite(e0, e1, e2) => Formula::Ite(
-                Box::new(Self::simplify(e0)),
-                Box::new(Self::simplify(e1)),
-                Box::new(Self::simplify(e2)),
-            ),
-            Formula::Pred(s, name, args) => Formula::Pred(
-                s.clone(),
-                name.clone(),
-                args.iter().map(Self::simplify).collect(),
-            ),
-            Formula::Cons(s, name, args) => Formula::Cons(
-                s.clone(),
-                name.clone(),
-                args.iter().map(Self::simplify).collect(),
-            ),
+            Formula::Ite(e0, e1, e2) => {
+                Formula::Ite(
+                    Box::new(Self::simplify(e0)),
+                    Box::new(Self::simplify(e1)),
+                    Box::new(Self::simplify(e2)),
+                )
+            }
+            Formula::Pred(s, name, args) => {
+                Formula::Pred(
+                    s.clone(),
+                    name.clone(),
+                    args.iter().map(Self::simplify).collect(),
+                )
+            }
+            Formula::Cons(s, name, args) => {
+                Formula::Cons(
+                    s.clone(),
+                    name.clone(),
+                    args.iter().map(Self::simplify).collect(),
+                )
+            }
             Formula::All(v, e) => {
                 Formula::All(Box::new(Self::simplify(v)), Box::new(Self::simplify(e)))
             }
@@ -660,11 +480,13 @@ impl Z3Runtime {
     /// `unOp`.
     fn un_op(op: UnOp, e: &ZAst) -> ZAst {
         match op {
-            UnOp::Neg => ZAst::from_ast(
-                &e.as_int()
-                    .expect("toAST: negating a non-integer")
-                    .unary_minus(),
-            ),
+            UnOp::Neg => {
+                ZAst::from_ast(
+                    &e.as_int()
+                        .expect("toAST: negating a non-integer")
+                        .unary_minus(),
+                )
+            }
             UnOp::Not => ZAst::from_ast(&e.as_bool().expect("toAST: negating a non-boolean").not()),
         }
     }
@@ -781,16 +603,136 @@ impl Z3Runtime {
     }
 }
 
+/// Map a Z3 solver result to the engine-agnostic `CheckResult` (no `From`
+/// impl: both `z3::SatResult` and `musfix::CheckResult` are foreign types).
+fn to_check_result(r: SatResult) -> CheckResult {
+    match r {
+        SatResult::Sat => CheckResult::Sat,
+        SatResult::Unsat => CheckResult::Unsat,
+        SatResult::Unknown => CheckResult::Unknown,
+    }
+}
+
+impl SmtEngine for Z3Runtime {
+    type Fml = Formula;
+    type Lit = ast::Bool;
+    type Model = Model;
+
+    fn fml_to_ast(&mut self, fml: &Self::Fml) -> Self::Lit {
+        self.fml_to_ast_bool(fml)
+    }
+
+    fn get_control_lit(&mut self, fml: Self::Fml) -> u64 {
+        Z3Runtime::get_control_lit(self, fml)
+    }
+
+    fn main_lit(&self, id: u64) -> &Self::Lit {
+        self.control_lit_main(id)
+    }
+
+    fn aux_lit(&self, id: u64) -> &Self::Lit {
+        self.control_lit_aux(id)
+    }
+
+    fn lit_to_fml(&self, id: u64) -> Self::Fml {
+        Z3Runtime::lit_to_fml(self, id)
+    }
+
+    fn lit_id_of(&self, lit: &Self::Lit) -> u64 {
+        Z3Runtime::lit_id_of(self, lit)
+    }
+
+    fn push_main(&mut self) {
+        self.main_solver.push();
+    }
+
+    fn pop_main(&mut self, n: u32) {
+        self.main_solver.pop(n);
+    }
+
+    fn push_aux(&mut self) {
+        self.aux_solver.push();
+    }
+
+    fn pop_aux(&mut self, n: u32) {
+        self.aux_solver.pop(n);
+    }
+
+    fn assert_main(&mut self, lit: &Self::Lit) {
+        self.main_solver.assert(lit);
+    }
+
+    fn assert_aux(&mut self, lit: &Self::Lit) {
+        self.aux_solver.assert(lit);
+    }
+
+    fn check_main(&mut self) -> CheckResult {
+        to_check_result(self.main_solver.check())
+    }
+
+    fn check_aux(&mut self) -> CheckResult {
+        to_check_result(self.aux_solver.check())
+    }
+
+    fn check_main_assumptions(&mut self, lits: &[Self::Lit]) -> CheckResult {
+        to_check_result(self.main_solver.check_assumptions(lits))
+    }
+
+    fn main_model(&self) -> Option<Self::Model> {
+        self.main_solver.get_model()
+    }
+
+    fn aux_model(&self) -> Option<Self::Model> {
+        self.aux_solver.get_model()
+    }
+
+    fn eval_main_lit(&self, model: &Self::Model, id: u64, bias: bool) -> bool {
+        let lit = self.control_lit_main(id);
+        model
+            .eval(lit, true)
+            .and_then(|b| b.as_bool())
+            .unwrap_or(bias)
+    }
+
+    fn eval_aux_lit(&self, model: &Self::Model, id: u64, bias: bool) -> bool {
+        let lit = self.control_lit_aux(id);
+        model
+            .eval(lit, true)
+            .and_then(|b| b.as_bool())
+            .unwrap_or(bias)
+    }
+
+    fn unsat_core(&self) -> Vec<Self::Lit> {
+        self.main_solver.get_unsat_core()
+    }
+
+    fn lit_not(&self, lit: &Self::Lit) -> Self::Lit {
+        lit.not()
+    }
+
+    fn lit_or(&self, lits: &[Self::Lit]) -> Self::Lit {
+        ast::Bool::or(lits)
+    }
+
+    fn lit_implies(&self, lhs: &Self::Lit, rhs: &Self::Lit) -> Self::Lit {
+        lhs.implies(rhs)
+    }
+
+    fn lit_false(&self) -> Self::Lit {
+        ast::Bool::from_bool(false)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Z3Runtime;
     use crate::{
         logic::{
-            and, and_clean, bool_var, eq, ffalse, fnot, ftrue, ge, int_lit, int_var, le, lt,
-            Formula, Sort,
+            Formula, Sort, and, and_clean, bool_var, eq, ffalse, fnot, ftrue, ge, int_lit, int_var,
+            le, lt,
         },
-        program::{add_constant, add_datatype, empty_env, DatatypeDef, Environment},
-        types::{int, BaseType, TypeSkeleton},
+        program::{DatatypeDef, Environment, add_constant, add_datatype, empty_env},
+        types::{BaseType, TypeSkeleton, int},
     };
 
     fn cons(sort: Sort, name: &str, args: Vec<Formula>) -> Formula {
@@ -909,33 +851,20 @@ mod tests {
         assert!(!z3.is_sat(&eq(nil, cons0.clone())));
         assert!(!z3.is_sat(&eq(cons0, cons1)));
         assert!(z3.is_sat(&eq(
-            cons(
-                sort.clone(),
-                "Cons",
-                vec![
-                    int_lit(0),
-                    cons(
-                        sort.clone(),
-                        "Cons",
-                        vec![int_lit(1), cons(sort, "Nil", vec![])]
-                    )
-                ],
-            ),
-            cons(
-                Sort::DataS("IntList".to_string(), vec![]),
-                "Cons",
-                vec![
-                    int_lit(0),
-                    cons(
-                        Sort::DataS("IntList".to_string(), vec![]),
-                        "Cons",
-                        vec![
-                            int_lit(1),
-                            cons(Sort::DataS("IntList".to_string(), vec![]), "Nil", vec![])
-                        ]
-                    )
-                ],
-            )
+            cons(sort.clone(), "Cons", vec![
+                int_lit(0),
+                cons(sort.clone(), "Cons", vec![
+                    int_lit(1),
+                    cons(sort, "Nil", vec![])
+                ])
+            ],),
+            cons(Sort::DataS("IntList".to_string(), vec![]), "Cons", vec![
+                int_lit(0),
+                cons(Sort::DataS("IntList".to_string(), vec![]), "Cons", vec![
+                    int_lit(1),
+                    cons(Sort::DataS("IntList".to_string(), vec![]), "Nil", vec![])
+                ])
+            ],)
         )));
     }
 
@@ -949,11 +878,10 @@ mod tests {
             eq(x.clone(), int_lit(0)),
             eq(
                 cons(sort, "Cons", vec![x, nil]),
-                cons(
-                    list_sort(),
-                    "Cons",
-                    vec![int_lit(0), cons(list_sort(), "Nil", vec![])]
-                )
+                cons(list_sort(), "Cons", vec![
+                    int_lit(0),
+                    cons(list_sort(), "Nil", vec![])
+                ])
             )
         )));
     }
@@ -976,11 +904,10 @@ mod tests {
         let x = int_var("x");
         let assumption = eq(x.clone(), int_lit(0));
         let must_have = eq(x.clone(), int_lit(3));
-        let cores = z3.get_all_mus(
-            &assumption,
-            &must_have,
-            &[eq(x.clone(), int_lit(1)), eq(x, int_lit(2))],
-        );
+        let cores = z3.get_all_mus(&assumption, &must_have, &[
+            eq(x.clone(), int_lit(1)),
+            eq(x, int_lit(2)),
+        ]);
         assert_eq!(cores, vec![vec![]]);
     }
 }

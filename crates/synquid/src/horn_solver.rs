@@ -10,11 +10,11 @@ use std::collections::BTreeSet;
 use crate::{
     cli::HornSolverParams,
     logic::{
-        and, and_clean, apply_solution, conjunction, conjuncts_of, disjunction, ffalse, fnot,
-        ftrue, iff, implies, left_hand_side, lookup_max_count, lookup_quals, lookup_quals_subst,
-        merge, neg_unknowns, pos_unknowns, right_hand_side, substitute, u_dnf, unknown_name,
-        unknowns_of, valuation, BinOp, Candidate, ExtractAssumptions, Formula, QMap, QSpace,
-        Solution, Valuation,
+        BinOp, Candidate, ExtractAssumptions, Formula, QMap, QSpace, Solution, Valuation, and,
+        and_clean, apply_solution, conjunction, conjuncts_of, disjunction, ffalse, fnot, ftrue,
+        iff, implies, left_hand_side, lookup_max_count, lookup_quals, lookup_quals_subst, merge,
+        neg_unknowns, pos_unknowns, right_hand_side, substitute, u_dnf, unknown_name, unknowns_of,
+        valuation,
     },
     program::Environment,
     smt::Z3Runtime,
@@ -384,30 +384,32 @@ impl FixPointSolver {
     /// makes `fml` valid.
     fn weaken(z3: &mut Z3Runtime, fml: &Formula, sol: &Solution) -> Option<Solution> {
         match fml {
-            Formula::Binary(BinOp::Implies, lhs, rhs) => match &**rhs {
-                Formula::Unknown(subst, u) => {
-                    let quals1 = sol
-                        .get(u)
-                        .expect("weaken: no value for unknown")
-                        .iter()
-                        .filter(|q| {
-                            Self::is_valid_fml(
-                                z3,
-                                &Formula::Binary(
-                                    BinOp::Implies,
-                                    lhs.clone(),
-                                    Box::new(substitute(subst, (*q).clone())),
-                                ),
-                            )
-                        })
-                        .cloned()
-                        .collect::<BTreeSet<_>>();
-                    let mut sol1 = sol.clone();
-                    sol1.insert(u.clone(), quals1);
-                    Some(sol1)
+            Formula::Binary(BinOp::Implies, lhs, rhs) => {
+                match &**rhs {
+                    Formula::Unknown(subst, u) => {
+                        let quals1 = sol
+                            .get(u)
+                            .expect("weaken: no value for unknown")
+                            .iter()
+                            .filter(|q| {
+                                Self::is_valid_fml(
+                                    z3,
+                                    &Formula::Binary(
+                                        BinOp::Implies,
+                                        lhs.clone(),
+                                        Box::new(substitute(subst, (*q).clone())),
+                                    ),
+                                )
+                            })
+                            .cloned()
+                            .collect::<BTreeSet<_>>();
+                        let mut sol1 = sol.clone();
+                        sol1.insert(u.clone(), quals1);
+                        Some(sol1)
+                    }
+                    _ => None,
                 }
-                _ => None,
-            },
+            }
             _ => panic!("weaken: not an implication"),
         }
     }
@@ -537,7 +539,8 @@ impl FixPointSolver {
         }
     }
 
-    /// A constraint that the head candidate has neither already solved nor failed.
+    /// A constraint that the head candidate has neither already solved nor
+    /// failed.
     fn is_new(c: &Formula, cand: &Candidate) -> bool {
         !cand.valid_constraints.contains(c) && !cand.invalid_constraints.contains(c)
     }
@@ -583,11 +586,13 @@ impl FixPointSolver {
     /// `instantiateRhs` (in `greatestFixPoint`).
     fn instantiate_rhs(sol: &Solution, fml: &Formula) -> Formula {
         match fml {
-            Formula::Binary(BinOp::Implies, lhs, rhs) => Formula::Binary(
-                BinOp::Implies,
-                lhs.clone(),
-                Box::new(apply_solution(sol, rhs)),
-            ),
+            Formula::Binary(BinOp::Implies, lhs, rhs) => {
+                Formula::Binary(
+                    BinOp::Implies,
+                    lhs.clone(),
+                    Box::new(apply_solution(sol, rhs)),
+                )
+            }
             _ => panic!("instantiateRhs: not an implication"),
         }
     }
@@ -757,24 +762,32 @@ impl FixPointSolver {
         strategy: crate::cli::ConstraintPickStrategy,
     ) -> Formula {
         match strategy {
-            crate::cli::ConstraintPickStrategy::FirstConstraint => cand
-                .invalid_constraints
-                .iter()
-                .next()
-                .cloned()
-                .expect("pickConstraint: no invalid constraints"),
-            crate::cli::ConstraintPickStrategy::SmallSpaceConstraint => cand
-                .invalid_constraints
-                .iter()
-                .min_by(|x, y| {
-                    let sx =
-                        Self::max_val_size(quals, &cand.solution, &unknowns_of(&left_hand_side(x)));
-                    let sy =
-                        Self::max_val_size(quals, &cand.solution, &unknowns_of(&left_hand_side(y)));
-                    sx.cmp(&sy)
-                })
-                .cloned()
-                .expect("pickConstraint: no invalid constraints"),
+            crate::cli::ConstraintPickStrategy::FirstConstraint => {
+                cand.invalid_constraints
+                    .iter()
+                    .next()
+                    .cloned()
+                    .expect("pickConstraint: no invalid constraints")
+            }
+            crate::cli::ConstraintPickStrategy::SmallSpaceConstraint => {
+                cand.invalid_constraints
+                    .iter()
+                    .min_by(|x, y| {
+                        let sx = Self::max_val_size(
+                            quals,
+                            &cand.solution,
+                            &unknowns_of(&left_hand_side(x)),
+                        );
+                        let sy = Self::max_val_size(
+                            quals,
+                            &cand.solution,
+                            &unknowns_of(&left_hand_side(y)),
+                        );
+                        sx.cmp(&sy)
+                    })
+                    .cloned()
+                    .expect("pickConstraint: no invalid constraints")
+            }
         }
     }
 
@@ -784,22 +797,24 @@ impl FixPointSolver {
         strategy: crate::cli::ConstraintPickStrategy,
     ) -> Formula {
         match strategy {
-            crate::cli::ConstraintPickStrategy::FirstConstraint => cand
-                .invalid_constraints
-                .iter()
-                .next()
-                .cloned()
-                .expect("pickConstraint: no invalid constraints"),
-            crate::cli::ConstraintPickStrategy::SmallSpaceConstraint => cand
-                .invalid_constraints
-                .iter()
-                .min_by(|x, y| {
-                    let sx = unknowns_of(&right_hand_side(x)).len();
-                    let sy = unknowns_of(&right_hand_side(y)).len();
-                    sx.cmp(&sy)
-                })
-                .cloned()
-                .expect("pickConstraint: no invalid constraints"),
+            crate::cli::ConstraintPickStrategy::FirstConstraint => {
+                cand.invalid_constraints
+                    .iter()
+                    .next()
+                    .cloned()
+                    .expect("pickConstraint: no invalid constraints")
+            }
+            crate::cli::ConstraintPickStrategy::SmallSpaceConstraint => {
+                cand.invalid_constraints
+                    .iter()
+                    .min_by(|x, y| {
+                        let sx = unknowns_of(&right_hand_side(x)).len();
+                        let sy = unknowns_of(&right_hand_side(y)).len();
+                        sx.cmp(&sy)
+                    })
+                    .cloned()
+                    .expect("pickConstraint: no invalid constraints")
+            }
         }
     }
 
@@ -927,11 +942,13 @@ impl FixPointSolver {
     /// `unsubstQual` (in `strengthen`).
     fn unsubst_qual(qmap: &QMap, u: &Formula, qual: &Formula) -> Vec<Formula> {
         match u {
-            Formula::Unknown(subst, _) => lookup_quals(qmap, u)
-                .iter()
-                .filter(|q| substitute(subst, (*q).clone()) == *qual)
-                .cloned()
-                .collect(),
+            Formula::Unknown(subst, _) => {
+                lookup_quals(qmap, u)
+                    .iter()
+                    .filter(|q| substitute(subst, (*q).clone()) == *qual)
+                    .cloned()
+                    .collect()
+            }
             _ => panic!("unsubstQual: not an unknown"),
         }
     }
@@ -1149,14 +1166,14 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        filter_subsets, optimal_valuations_bfs, optimal_valuations_marco, prune, strictly_implies,
-        FixPointSolver,
+        FixPointSolver, filter_subsets, optimal_valuations_bfs, optimal_valuations_marco, prune,
+        strictly_implies,
     };
     use crate::{
-        cli::{default_horn_solver_params, OptimalValuationsStrategy},
+        cli::{OptimalValuationsStrategy, default_horn_solver_params},
         logic::{
-            and, conjunction, eq, ffalse, fnot, ftrue, ge, implies, initial_candidate, int_lit,
-            int_var, le, left_hand_side, lt, neq, or, Formula, QMap, QSpace, Solution, Sort, UnOp,
+            Formula, QMap, QSpace, Solution, Sort, UnOp, and, conjunction, eq, ffalse, fnot, ftrue,
+            ge, implies, initial_candidate, int_lit, int_var, le, left_hand_side, lt, neq, or,
         },
         program::empty_env,
     };
@@ -1170,13 +1187,10 @@ mod tests {
     }
 
     fn qmap_single(qs: &[Formula], max_count: usize) -> QMap {
-        QMap::from([(
-            "P".to_string(),
-            QSpace {
-                qualifiers: qs.to_vec(),
-                max_count,
-            },
-        )])
+        QMap::from([("P".to_string(), QSpace {
+            qualifiers: qs.to_vec(),
+            max_count,
+        })])
     }
 
     #[test]
@@ -1241,12 +1255,9 @@ mod tests {
         let qmap = qmap_single(&[ge(int_var("x"), int_lit(0))], 1);
         let c1 = implies(eq(int_var("x"), int_lit(0)), p_x());
         let c2 = implies(p_x(), ge(int_var("x"), int_lit(0)));
-        let cands = solver.refine_candidates(
-            &[c1, c2.clone()],
-            &qmap,
-            &no_assumptions(),
-            &[initial_candidate()],
-        );
+        let cands = solver.refine_candidates(&[c1, c2.clone()], &qmap, &no_assumptions(), &[
+            initial_candidate(),
+        ]);
         assert_eq!(cands.len(), 1);
         let cand = &cands[0];
         assert_eq!(
@@ -1315,17 +1326,12 @@ mod tests {
         let n = int_var("n");
         let v = int_var("_v");
         let len = |name: String| {
-            Formula::Pred(
-                Box::new(Sort::IntS),
-                "len".to_string(),
-                vec![Formula::Var(
-                    Box::new(Sort::DataS(
-                        "List".to_string(),
-                        vec![Sort::VarS("a".to_string())],
-                    )),
-                    name,
-                )],
-            )
+            Formula::Pred(Box::new(Sort::IntS), "len".to_string(), vec![Formula::Var(
+                Box::new(Sort::DataS("List".to_string(), vec![Sort::VarS(
+                    "a".to_string(),
+                )])),
+                name,
+            )])
         };
         let rhs = eq(len("_v".to_string()), n.clone());
         let lhs: BTreeSet<Formula> = [

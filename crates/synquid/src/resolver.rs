@@ -8,24 +8,25 @@ use std::{
 };
 
 use crate::{
-    error::{no_pos, ErrorKind, ErrorMessage, Pos, SourcePos},
+    error::{ErrorKind, ErrorMessage, Pos, SourcePos, no_pos},
     logic::{
-        eq, ftrue, is_set_s, sort_of, sort_substitute, sort_substitute_fml, substitute,
-        type_vars_of_sort, unify_sorts, var_name, vars_of, BinOp, Formula, PredSig, Sort,
-        SortConstraint, SortSubstitution, Substitution, UnOp, DONT_CARE, VALUE_VAR_NAME,
+        BinOp, DONT_CARE, Formula, PredSig, Sort, SortConstraint, SortSubstitution, Substitution,
+        UnOp, VALUE_VAR_NAME, eq, ftrue, is_set_s, sort_of, sort_substitute, sort_substitute_fml,
+        substitute, type_vars_of_sort, unify_sorts, var_name, vars_of,
     },
     pretty::text,
     program::{
-        add_bound_predicate, add_datatype, add_global_predicate, add_measure, add_poly_constant,
-        add_type_synonym, add_unresolved_constant, add_variable, all_symbols, default_set_type,
-        empty_env, generate_schema, is_constant, measure_prog, remove_variable, symbols_of_arity,
-        untyped, BareDeclaration, BareProgram, Case, DatatypeDef, Environment, Goal, MeasureCase,
-        MeasureDef, RProgram, UProgram,
+        BareDeclaration, BareProgram, Case, DatatypeDef, Environment, Goal, MeasureCase,
+        MeasureDef, RProgram, UProgram, add_bound_predicate, add_datatype, add_global_predicate,
+        add_measure, add_poly_constant, add_type_synonym, add_unresolved_constant, add_variable,
+        all_symbols, default_set_type, empty_env, generate_schema, is_constant, measure_prog,
+        remove_variable, symbols_of_arity, untyped,
     },
     types::{
-        add_refinement, add_refinement_to_last_sch, all_arg_types, all_args, arity, base_type_of,
-        bound_vars_of, from_sort, is_function_type, last_type, noncapture_type_subst, to_monotype,
-        to_sort, type_vars_of, vart_all, BaseType, RSchema, RType, SchemaSkeleton, TypeSkeleton,
+        BaseType, RSchema, RType, SchemaSkeleton, TypeSkeleton, add_refinement,
+        add_refinement_to_last_sch, all_arg_types, all_args, arity, base_type_of, bound_vars_of,
+        from_sort, is_function_type, last_type, noncapture_type_subst, to_monotype, to_sort,
+        type_vars_of, vart_all,
     },
     util::Id,
 };
@@ -184,9 +185,11 @@ impl ResolverState {
         self.id_count = 0;
         let (sls, srs): (Vec<Sort>, Vec<Sort>) = unification_cs
             .iter()
-            .map(|c| match c {
-                SortConstraint::SameSort(s1, s2) => (s1.clone(), s2.clone()),
-                SortConstraint::IsOrd(_) => unreachable!("partitioned as SameSort"),
+            .map(|c| {
+                match c {
+                    SortConstraint::SameSort(s1, s2) => (s1.clone(), s2.clone()),
+                    SortConstraint::IsOrd(_) => unreachable!("partitioned as SameSort"),
+                }
             })
             .unzip();
         let subst = match unify_sorts(&tvs, &sls, &srs) {
@@ -451,9 +454,11 @@ impl ResolverState {
                         }
                         Ok(())
                     }
-                    _ => Err(self.throw_res_error(format!(
-                        "Input sort of measure {measure_name} must be a datatype"
-                    ))),
+                    _ => {
+                        Err(self.throw_res_error(format!(
+                            "Input sort of measure {measure_name} must be a datatype"
+                        )))
+                    }
                 }
             }
             BareDeclaration::PredDecl(sig) => {
@@ -694,9 +699,11 @@ impl ResolverState {
                 }
                 let args2: Vec<(Id, Sort)> = fresh_consts
                     .iter()
-                    .map(|f| match f {
-                        Formula::Var(s, x) => (x.clone(), (**s).clone()),
-                        _ => unreachable!("freshId always returns a Var"),
+                    .map(|f| {
+                        match f {
+                            Formula::Var(s, x) => (x.clone(), (**s).clone()),
+                            _ => unreachable!("freshId always returns a Var"),
+                        }
                     })
                     .collect();
                 let m = MeasureDef {
@@ -1025,10 +1032,12 @@ impl ResolverState {
                 .collect();
             st.environment = add_all_variables(&st.environment, &vars);
             match fml {
-                Formula::Pred(_, p, arg_fmls) if arg_fmls.is_empty() => st.resolve_type_refinement(
-                    Sort::AnyS,
-                    &Formula::Pred(Box::new(Sort::BoolS), p.clone(), vars),
-                ),
+                Formula::Pred(_, p, arg_fmls) if arg_fmls.is_empty() => {
+                    st.resolve_type_refinement(
+                        Sort::AnyS,
+                        &Formula::Pred(Box::new(Sort::BoolS), p.clone(), vars),
+                    )
+                }
                 _ => st.resolve_type_refinement(Sort::AnyS, fml),
             }
         })
@@ -1037,26 +1046,29 @@ impl ResolverState {
     fn resolve_sort(&mut self, s: &Sort) -> RRes<()> {
         match s {
             Sort::SetS(el) => self.resolve_sort(el),
-            Sort::DataS(name, s_args) => match self.environment.datatypes.get(name) {
-                None => {
-                    Err(self.throw_res_error(format!("Datatype {name} is undefined in sort {s}")))
-                }
-                Some(dt) => {
-                    let n = dt.type_params.len();
-                    if s_args.len() != n {
-                        return Err(self.throw_res_error(format!(
-                            "Datatype {} expected {} type arguments and got {}",
-                            name,
-                            n,
-                            s_args.len()
-                        )));
+            Sort::DataS(name, s_args) => {
+                match self.environment.datatypes.get(name) {
+                    None => {
+                        Err(self
+                            .throw_res_error(format!("Datatype {name} is undefined in sort {s}")))
                     }
-                    for a in s_args {
-                        self.resolve_sort(a)?;
+                    Some(dt) => {
+                        let n = dt.type_params.len();
+                        if s_args.len() != n {
+                            return Err(self.throw_res_error(format!(
+                                "Datatype {} expected {} type arguments and got {}",
+                                name,
+                                n,
+                                s_args.len()
+                            )));
+                        }
+                        for a in s_args {
+                            self.resolve_sort(a)?;
+                        }
+                        Ok(())
                     }
-                    Ok(())
                 }
-            },
+            }
             _ => Ok(()),
         }
     }
@@ -1104,20 +1116,26 @@ impl ResolverState {
                     .collect::<RRes<Vec<_>>>()?;
                 Ok(Formula::SetLit(s.clone(), fs2))
             }
-            Formula::Unary(op, f) => Ok(Formula::Unary(
-                *op,
-                Box::new(self.resolve_measure_formula(f)?),
-            )),
-            Formula::Binary(op, f1, f2) => Ok(Formula::Binary(
-                *op,
-                Box::new(self.resolve_measure_formula(f1)?),
-                Box::new(self.resolve_measure_formula(f2)?),
-            )),
-            Formula::Ite(f1, f2, f3) => Ok(Formula::Ite(
-                Box::new(self.resolve_measure_formula(f1)?),
-                Box::new(self.resolve_measure_formula(f2)?),
-                Box::new(self.resolve_measure_formula(f3)?),
-            )),
+            Formula::Unary(op, f) => {
+                Ok(Formula::Unary(
+                    *op,
+                    Box::new(self.resolve_measure_formula(f)?),
+                ))
+            }
+            Formula::Binary(op, f1, f2) => {
+                Ok(Formula::Binary(
+                    *op,
+                    Box::new(self.resolve_measure_formula(f1)?),
+                    Box::new(self.resolve_measure_formula(f2)?),
+                ))
+            }
+            Formula::Ite(f1, f2, f3) => {
+                Ok(Formula::Ite(
+                    Box::new(self.resolve_measure_formula(f1)?),
+                    Box::new(self.resolve_measure_formula(f2)?),
+                    Box::new(self.resolve_measure_formula(f3)?),
+                ))
+            }
             Formula::Pred(_, name, f) => {
                 if let Some((args, body)) = self.inlines.get(name).cloned() {
                     let subst: Substitution = args
@@ -1141,10 +1159,12 @@ impl ResolverState {
                     .collect::<RRes<Vec<_>>>()?;
                 Ok(Formula::Cons(s.clone(), x.clone(), f2))
             }
-            Formula::All(f1, f2) => Ok(Formula::All(
-                Box::new(self.resolve_measure_formula(f1)?),
-                Box::new(self.resolve_measure_formula(f2)?),
-            )),
+            Formula::All(f1, f2) => {
+                Ok(Formula::All(
+                    Box::new(self.resolve_measure_formula(f1)?),
+                    Box::new(self.resolve_measure_formula(f2)?),
+                ))
+            }
             _ => Ok(fml.clone()),
         }
     }
@@ -1154,16 +1174,18 @@ impl ResolverState {
             Formula::Var(_, x) => {
                 let sym0 = symbols_of_arity(0, &self.environment);
                 match sym0.get(x) {
-                    Some(sch) => match sch {
-                        SchemaSkeleton::Monotype(TypeSkeleton::ScalarT(base_t, _)) => {
-                            Ok(Formula::Var(Box::new(to_sort(base_t)), x.clone()))
+                    Some(sch) => {
+                        match sch {
+                            SchemaSkeleton::Monotype(TypeSkeleton::ScalarT(base_t, _)) => {
+                                Ok(Formula::Var(Box::new(to_sort(base_t)), x.clone()))
+                            }
+                            _ => {
+                                panic!(
+                                    "resolveFormula: encountered non-scalar variable {x} in a formula"
+                                )
+                            }
                         }
-                        _ => {
-                            panic!(
-                                "resolveFormula: encountered non-scalar variable {x} in a formula"
-                            )
-                        }
-                    },
+                    }
                     None => {
                         // Maybe it's a zero-argument predicate?
                         match self.resolve_formula(&Formula::Pred(
@@ -1394,35 +1416,47 @@ pub fn normalize_program(p: &RProgram) -> RProgram {
                 _ => untyped(BareProgram::PApp(Box::new(fun2), Box::new(arg2))),
             }
         }
-        BareProgram::PFun(name, body) => untyped(BareProgram::PFun(
-            name.clone(),
-            Box::new(normalize_program(body)),
-        )),
-        BareProgram::PIf(g, p1, p2) => untyped(BareProgram::PIf(
-            Box::new(normalize_program(g)),
-            Box::new(normalize_program(p1)),
-            Box::new(normalize_program(p2)),
-        )),
-        BareProgram::PMatch(arg, cases) => untyped(BareProgram::PMatch(
-            Box::new(normalize_program(arg)),
-            cases
-                .iter()
-                .map(|c| Case {
-                    constructor: c.constructor.clone(),
-                    arg_names: c.arg_names.clone(),
-                    expr: normalize_program(&c.expr),
-                })
-                .collect(),
-        )),
-        BareProgram::PFix(fs, body) => untyped(BareProgram::PFix(
-            fs.clone(),
-            Box::new(normalize_program(body)),
-        )),
-        BareProgram::PLet(v, val, body) => untyped(BareProgram::PLet(
-            v.clone(),
-            Box::new(normalize_program(val)),
-            Box::new(normalize_program(body)),
-        )),
+        BareProgram::PFun(name, body) => {
+            untyped(BareProgram::PFun(
+                name.clone(),
+                Box::new(normalize_program(body)),
+            ))
+        }
+        BareProgram::PIf(g, p1, p2) => {
+            untyped(BareProgram::PIf(
+                Box::new(normalize_program(g)),
+                Box::new(normalize_program(p1)),
+                Box::new(normalize_program(p2)),
+            ))
+        }
+        BareProgram::PMatch(arg, cases) => {
+            untyped(BareProgram::PMatch(
+                Box::new(normalize_program(arg)),
+                cases
+                    .iter()
+                    .map(|c| {
+                        Case {
+                            constructor: c.constructor.clone(),
+                            arg_names: c.arg_names.clone(),
+                            expr: normalize_program(&c.expr),
+                        }
+                    })
+                    .collect(),
+            ))
+        }
+        BareProgram::PFix(fs, body) => {
+            untyped(BareProgram::PFix(
+                fs.clone(),
+                Box::new(normalize_program(body)),
+            ))
+        }
+        BareProgram::PLet(v, val, body) => {
+            untyped(BareProgram::PLet(
+                v.clone(),
+                Box::new(normalize_program(val)),
+                Box::new(normalize_program(body)),
+            ))
+        }
         _ => p.clone(),
     }
 }
@@ -1439,18 +1473,22 @@ fn transform_case(prog: &impl Fn(&RProgram) -> RProgram, c: &Case<RType>) -> Cas
 /// Conditional is on the left side of an application.
 fn transform_l_cond(l: &RProgram, r: &RProgram) -> RProgram {
     match &l.content {
-        BareProgram::PIf(g, t, f) => untyped(BareProgram::PIf(
-            g.clone(),
-            Box::new(apply(t, r)),
-            Box::new(apply(f, r)),
-        )),
-        BareProgram::PMatch(scr, cases) => untyped(BareProgram::PMatch(
-            scr.clone(),
-            cases
-                .iter()
-                .map(|c| transform_case(&|e| apply(e, r), c))
-                .collect(),
-        )),
+        BareProgram::PIf(g, t, f) => {
+            untyped(BareProgram::PIf(
+                g.clone(),
+                Box::new(apply(t, r)),
+                Box::new(apply(f, r)),
+            ))
+        }
+        BareProgram::PMatch(scr, cases) => {
+            untyped(BareProgram::PMatch(
+                scr.clone(),
+                cases
+                    .iter()
+                    .map(|c| transform_case(&|e| apply(e, r), c))
+                    .collect(),
+            ))
+        }
         _ => apply(l, r),
     }
 }
@@ -1458,18 +1496,22 @@ fn transform_l_cond(l: &RProgram, r: &RProgram) -> RProgram {
 /// Conditional is on the right side of an application.
 fn transform_r_cond(l: &RProgram, r: &RProgram) -> RProgram {
     match &r.content {
-        BareProgram::PIf(g, t, f) => untyped(BareProgram::PIf(
-            g.clone(),
-            Box::new(apply(l, t)),
-            Box::new(apply(l, f)),
-        )),
-        BareProgram::PMatch(scr, cases) => untyped(BareProgram::PMatch(
-            scr.clone(),
-            cases
-                .iter()
-                .map(|c| transform_case(&|e| apply(l, e), c))
-                .collect(),
-        )),
+        BareProgram::PIf(g, t, f) => {
+            untyped(BareProgram::PIf(
+                g.clone(),
+                Box::new(apply(l, t)),
+                Box::new(apply(l, f)),
+            ))
+        }
+        BareProgram::PMatch(scr, cases) => {
+            untyped(BareProgram::PMatch(
+                scr.clone(),
+                cases
+                    .iter()
+                    .map(|c| transform_case(&|e| apply(l, e), c))
+                    .collect(),
+            ))
+        }
         _ => apply(l, r),
     }
 }

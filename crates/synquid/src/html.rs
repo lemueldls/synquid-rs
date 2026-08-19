@@ -220,8 +220,8 @@ fn render_html_no_header(lines: &[HtmlLine]) -> String {
 mod tests {
     use super::*;
     use crate::pretty::{
-        color, empty, intensify, plain, render_pretty, text, Color, ColorIntensity,
-        ConsoleIntensity, ConsoleLayer,
+        Color, ColorIntensity, ConsoleIntensity, ConsoleLayer, color, empty, intensify, plain,
+        render_pretty, text,
     };
 
     fn html(d: &crate::pretty::Doc) -> String {

@@ -4,35 +4,35 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use crate::{
     cli::{ExplorerParams, FixpointStrategy},
-    error::{no_pos, ErrorKind, ErrorMessage},
+    error::{ErrorKind, ErrorMessage, no_pos},
     explorer::{
-        add_constraint, app_type, case_symbols, check_e, current_valuation, cut, enqueue_goal,
-        fresh_id, fresh_var, generate_aux_goals, generate_condition, generate_e_up_to,
-        generate_error, generate_i, in_context, instantiate, local, mplus, optional_in_partial,
-        ret, run_explorer, run_in_solver, symbol_type, throw_error, to_var, ExplorerCtx,
-        Reconstructor, Step,
+        ExplorerCtx, Reconstructor, Step, add_constraint, app_type, case_symbols, check_e,
+        current_valuation, cut, enqueue_goal, fresh_id, fresh_var, generate_aux_goals,
+        generate_condition, generate_e_up_to, generate_error, generate_i, in_context, instantiate,
+        local, mplus, optional_in_partial, ret, run_explorer, run_in_solver, symbol_type,
+        throw_error, to_var,
     },
     horn_solver::FixPointSolver,
     logic::{
-        and, and_clean, conjunction, ffalse, fnot, ge, int_lit, int_var, le, lt, or_clean,
-        substitute, val_int, Formula, Sort, Substitution, UnOp, VALUE_VAR_NAME,
+        Formula, Sort, Substitution, UnOp, VALUE_VAR_NAME, and, and_clean, conjunction, ffalse,
+        fnot, ge, int_lit, int_var, le, lt, or_clean, substitute, val_int,
     },
     pretty::{pretty_program, pretty_type as pretty_type_doc, text, vsp},
     program::{
-        add_assumption, add_bound_predicate, add_poly_variable, add_scrutinee, add_type_var,
-        add_variable, all_symbols, embed_context, is_bound, lookup_symbol, refine_bot, refine_top,
+        BareProgram, Case, Constraint, Environment, Goal, RProgram, UProgram, add_assumption,
+        add_bound_predicate, add_poly_variable, add_scrutinee, add_type_var, add_variable,
+        all_symbols, embed_context, is_bound, lookup_symbol, refine_bot, refine_top,
         rename_as_impl, symbol_list, type_substitute_env, u_hole, unfold_all_variables, untyped,
-        BareProgram, Case, Constraint, Environment, Goal, RProgram, UProgram,
     },
     resolver::resolve_refined_type,
     tc_solver::{
-        current_assignment, finalize_program, finalize_type, init_typing_state, match_cons_type,
-        solve_type_constraints, TypingParams,
+        TypingParams, current_assignment, finalize_program, finalize_type, init_typing_state,
+        match_cons_type, solve_type_constraints,
     },
     types::{
-        add_refinement, arity, base_type_of, bool_all, has_set, intersection, is_function_type,
-        last_type, rename_var, shape, to_monotype, to_sort, type_substitute, BaseType, RType,
-        SchemaSkeleton, TypeSkeleton,
+        BaseType, RType, SchemaSkeleton, TypeSkeleton, add_refinement, arity, base_type_of,
+        bool_all, has_set, intersection, is_function_type, last_type, rename_var, shape,
+        to_monotype, to_sort, type_substitute,
     },
 };
 
@@ -106,9 +106,11 @@ pub fn reconstruct_top_level(ctx: &mut ExplorerCtx<'_>, goal: &Goal) -> Step<RPr
             let goal = goal.clone();
             local(
                 ctx,
-                |p| ExplorerParams {
-                    aux_depth: depth,
-                    ..p.clone()
+                |p| {
+                    ExplorerParams {
+                        aux_depth: depth,
+                        ..p.clone()
+                    }
                 },
                 move |ctx| reconstruct_fix(ctx, &goal),
             )
@@ -120,9 +122,11 @@ pub fn reconstruct_top_level(ctx: &mut ExplorerCtx<'_>, goal: &Goal) -> Step<RPr
             let impl_ = goal.g_impl.clone();
             local(
                 ctx,
-                |p| ExplorerParams {
-                    aux_depth: depth,
-                    ..p.clone()
+                |p| {
+                    ExplorerParams {
+                        aux_depth: depth,
+                        ..p.clone()
+                    }
                 },
                 move |ctx| reconstruct_i(ctx, &env, &t, &impl_),
             )
@@ -186,9 +190,11 @@ fn reconstruct_fix(ctx: &mut ExplorerCtx<'_>, goal: &Goal) -> Step<RProgram> {
     } else {
         let names: Vec<String> = rec_calls.iter().map(|(f, _)| f.clone()).collect();
         let typ_prime = typ_prime.clone();
-        Rc::new(move |p| RProgram {
-            content: BareProgram::PFix(names.clone(), Box::new(p.clone())),
-            type_of: typ_prime.clone(),
+        Rc::new(move |p| {
+            RProgram {
+                content: BareProgram::PFix(names.clone(), Box::new(p.clone())),
+                type_of: typ_prime.clone(),
+            }
         })
     };
     let p = try_step!(in_context(ctx, wrap.clone(), |ctx| {
@@ -243,73 +249,79 @@ fn recursive_type_tuple(
     fml: Formula,
 ) -> Step<(RType, bool)> {
     match t {
-        TypeSkeleton::FunctionT(x, t_arg, t_res) => match termination_refinement(env, x, t_arg) {
-            None => {
-                let (t_res_prime, seen) = try_step!(recursive_type_tuple(ctx, env, t_res, fml));
-                ret(
-                    ctx,
-                    (
-                        TypeSkeleton::FunctionT(x.clone(), t_arg.clone(), Box::new(t_res_prime)),
-                        seen,
-                    ),
-                )
-            }
-            Some((arg_lt, arg_le)) => {
-                let y = try_step!(fresh_var(ctx, env, "x"));
-                let y_for_val: Substitution = BTreeMap::from([(
-                    VALUE_VAR_NAME.to_string(),
-                    Formula::Var(Box::new(to_sort(&base_type_of(t_arg))), y.clone()),
-                )]);
-                let fml_prime = or_clean(fml.clone(), substitute(&y_for_val, arg_lt.clone()));
-                let (t_res_prime, seen) = try_step!(recursive_type_tuple(
-                    ctx,
-                    env,
-                    &rename_var(&|b| is_bound(env, b), x, &y, t_arg, t_res),
-                    fml_prime,
-                ));
-                let arg_t = (**t_arg).clone();
-                if seen {
+        TypeSkeleton::FunctionT(x, t_arg, t_res) => {
+            match termination_refinement(env, x, t_arg) {
+                None => {
+                    let (t_res_prime, seen) = try_step!(recursive_type_tuple(ctx, env, t_res, fml));
                     ret(
                         ctx,
                         (
                             TypeSkeleton::FunctionT(
-                                y,
-                                Box::new(add_refinement(arg_t, &arg_le)),
+                                x.clone(),
+                                t_arg.clone(),
                                 Box::new(t_res_prime),
                             ),
-                            true,
-                        ),
-                    )
-                } else if fml == ffalse() {
-                    ret(
-                        ctx,
-                        (
-                            TypeSkeleton::FunctionT(
-                                y,
-                                Box::new(add_refinement(arg_t, &arg_lt)),
-                                Box::new(t_res_prime),
-                            ),
-                            true,
-                        ),
-                    )
-                } else {
-                    ret(
-                        ctx,
-                        (
-                            TypeSkeleton::FunctionT(
-                                y,
-                                Box::new(add_refinement(
-                                    arg_t,
-                                    &and_clean(arg_le, or_clean(fml, arg_lt)),
-                                )),
-                                Box::new(t_res_prime),
-                            ),
-                            true,
+                            seen,
                         ),
                     )
                 }
+                Some((arg_lt, arg_le)) => {
+                    let y = try_step!(fresh_var(ctx, env, "x"));
+                    let y_for_val: Substitution = BTreeMap::from([(
+                        VALUE_VAR_NAME.to_string(),
+                        Formula::Var(Box::new(to_sort(&base_type_of(t_arg))), y.clone()),
+                    )]);
+                    let fml_prime = or_clean(fml.clone(), substitute(&y_for_val, arg_lt.clone()));
+                    let (t_res_prime, seen) = try_step!(recursive_type_tuple(
+                        ctx,
+                        env,
+                        &rename_var(&|b| is_bound(env, b), x, &y, t_arg, t_res),
+                        fml_prime,
+                    ));
+                    let arg_t = (**t_arg).clone();
+                    if seen {
+                        ret(
+                            ctx,
+                            (
+                                TypeSkeleton::FunctionT(
+                                    y,
+                                    Box::new(add_refinement(arg_t, &arg_le)),
+                                    Box::new(t_res_prime),
+                                ),
+                                true,
+                            ),
+                        )
+                    } else if fml == ffalse() {
+                        ret(
+                            ctx,
+                            (
+                                TypeSkeleton::FunctionT(
+                                    y,
+                                    Box::new(add_refinement(arg_t, &arg_lt)),
+                                    Box::new(t_res_prime),
+                                ),
+                                true,
+                            ),
+                        )
+                    } else {
+                        ret(
+                            ctx,
+                            (
+                                TypeSkeleton::FunctionT(
+                                    y,
+                                    Box::new(add_refinement(
+                                        arg_t,
+                                        &and_clean(arg_le, or_clean(fml, arg_lt)),
+                                    )),
+                                    Box::new(t_res_prime),
+                                ),
+                                true,
+                            ),
+                        )
+                    }
+                }
             }
-        },
+        }
         _ => ret(ctx, (t.clone(), false)),
     }
 }
@@ -322,27 +334,29 @@ fn recursive_type_first(
     t: &RType,
 ) -> Step<RType> {
     match t {
-        TypeSkeleton::FunctionT(x, t_arg, t_res) => match termination_refinement(env, x, t_arg) {
-            None => {
-                let t_res_prime = try_step!(recursive_type_first(ctx, env, t_res));
-                ret(
-                    ctx,
-                    TypeSkeleton::FunctionT(x.clone(), t_arg.clone(), Box::new(t_res_prime)),
-                )
+        TypeSkeleton::FunctionT(x, t_arg, t_res) => {
+            match termination_refinement(env, x, t_arg) {
+                None => {
+                    let t_res_prime = try_step!(recursive_type_first(ctx, env, t_res));
+                    ret(
+                        ctx,
+                        TypeSkeleton::FunctionT(x.clone(), t_arg.clone(), Box::new(t_res_prime)),
+                    )
+                }
+                Some((arg_lt, _)) => {
+                    let y = try_step!(fresh_var(ctx, env, "x"));
+                    let t_res_prime = rename_var(&|b| is_bound(env, b), x, &y, t_arg, t_res);
+                    ret(
+                        ctx,
+                        TypeSkeleton::FunctionT(
+                            y,
+                            Box::new(add_refinement((**t_arg).clone(), &arg_lt)),
+                            Box::new(t_res_prime),
+                        ),
+                    )
+                }
             }
-            Some((arg_lt, _)) => {
-                let y = try_step!(fresh_var(ctx, env, "x"));
-                let t_res_prime = rename_var(&|b| is_bound(env, b), x, &y, t_arg, t_res);
-                ret(
-                    ctx,
-                    TypeSkeleton::FunctionT(
-                        y,
-                        Box::new(add_refinement((**t_arg).clone(), &arg_lt)),
-                        Box::new(t_res_prime),
-                    ),
-                )
-            }
-        },
+        }
         _ => ret(ctx, t.clone()),
     }
 }
@@ -408,18 +422,20 @@ fn reconstruct_i_prime(
 ) -> Step<RProgram> {
     match p {
         BareProgram::PErr => generate_error(ctx, env),
-        BareProgram::PHole => mplus(
-            ctx,
-            Rc::new({
-                let env = env.clone();
-                move |ctx| generate_error(ctx, &env)
-            }),
-            Rc::new({
-                let env = env.clone();
-                let t = t.clone();
-                move |ctx| generate_i(ctx, &env, &t)
-            }),
-        ),
+        BareProgram::PHole => {
+            mplus(
+                ctx,
+                Rc::new({
+                    let env = env.clone();
+                    move |ctx| generate_error(ctx, &env)
+                }),
+                Rc::new({
+                    let env = env.clone();
+                    let t = t.clone();
+                    move |ctx| generate_i(ctx, &env, &t)
+                }),
+            )
+        }
         BareProgram::PLet(x, i_def, i_body) if matches!(i_def.content, BareProgram::PFun(..)) => {
             Rc::make_mut(&mut ctx.state.lambda_lets)
                 .insert(x.clone(), (env.clone(), (**i_def).clone()));
@@ -427,9 +443,15 @@ fn reconstruct_i_prime(
             let wrap: Rc<dyn Fn(&RProgram) -> RProgram> = {
                 let x = x.clone();
                 let t = t.clone();
-                Rc::new(move |p| RProgram {
-                    content: BareProgram::PLet(x.clone(), Box::new(u_hole()), Box::new(p.clone())),
-                    type_of: t.clone(),
+                Rc::new(move |p| {
+                    RProgram {
+                        content: BareProgram::PLet(
+                            x.clone(),
+                            Box::new(u_hole()),
+                            Box::new(p.clone()),
+                        ),
+                        type_of: t.clone(),
+                    }
                 })
             };
             let p_body = try_step!(in_context(ctx, wrap.clone(), |ctx| {
@@ -437,342 +459,365 @@ fn reconstruct_i_prime(
             }));
             ret(ctx, wrap(&p_body))
         }
-        _ => match t {
-            TypeSkeleton::LetT(x, t_def, t_body) => {
-                let env_prime = Rc::new(add_variable(x, t_def, env));
-                reconstruct_i_prime(ctx, &env_prime, t_body, p)
-            }
-            TypeSkeleton::FunctionT(_, t_arg, t_res) => match p {
-                BareProgram::PFun(y, impl_body) => {
-                    let wrap: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let y = y.clone();
-                        let t = t.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PFun(y.clone(), Box::new(p.clone())),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let t_arg = (**t_arg).clone();
-                    let t_res = (**t_res).clone();
-                    let env2 = Rc::new(unfold_all_variables(&add_variable(y, &t_arg, env)));
-                    let p_body = try_step!(in_context(ctx, wrap.clone(), |ctx| {
-                        reconstruct_i(ctx, &env2, &t_res, impl_body)
-                    }));
-                    ret(ctx, wrap(&p_body))
+        _ => {
+            match t {
+                TypeSkeleton::LetT(x, t_def, t_body) => {
+                    let env_prime = Rc::new(add_variable(x, t_def, env));
+                    reconstruct_i_prime(ctx, &env_prime, t_body, p)
                 }
-                BareProgram::PSymbol(f) => {
-                    let fun = try_step!(eta_expand(ctx, t, f));
-                    reconstruct_i_prime(ctx, env, t, &fun.content)
-                }
-                _ => throw_error(
-                    ctx,
-                    &ErrorMessage::new(
-                        ErrorKind::TypeError,
-                        ctx.reader.params.source_pos.clone(),
-                        text(&format!(
-                            "Cannot assign function type {} to non-lambda term {}",
-                            pretty_type(t),
-                            pretty_pgm(&untyped(p.clone())),
-                        )),
-                    ),
-                ),
-            },
-            TypeSkeleton::ScalarT(..) => match p {
-                BareProgram::PFun(..) => throw_error(
-                    ctx,
-                    &ErrorMessage::new(
-                        ErrorKind::TypeError,
-                        ctx.reader.params.source_pos.clone(),
-                        text(&format!(
-                            "Cannot assign non-function type {} to lambda term {}",
-                            pretty_type(t),
-                            pretty_pgm(&untyped(p.clone())),
-                        )),
-                    ),
-                ),
-                BareProgram::PLet(x, i_def, i_body) => {
-                    let wrap_def: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let x = x.clone();
-                        let t = t.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PLet(
-                                x.clone(),
-                                Box::new(p.clone()),
-                                Box::new(RProgram {
-                                    content: BareProgram::PHole,
-                                    type_of: t.clone(),
-                                }),
-                            ),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let p_def = try_step!(in_context(ctx, wrap_def, |ctx| {
-                        reconstruct_e_top_level(ctx, env, &TypeSkeleton::AnyT, i_def)
-                    }));
-                    let (env_prime, t_def) = embed_context(env, &p_def.type_of);
-                    let wrap_body: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let x = x.clone();
-                        let t = t.clone();
-                        let p_def = p_def.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PLet(
-                                x.clone(),
-                                Box::new(p_def.clone()),
-                                Box::new(p.clone()),
-                            ),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let env_prime2 = Rc::new(add_variable(x, &t_def, &env_prime));
-                    let p_body = try_step!(in_context(ctx, wrap_body, |ctx| {
-                        reconstruct_i(ctx, &env_prime2, t, i_body)
-                    }));
-                    ret(
-                        ctx,
-                        RProgram {
-                            content: BareProgram::PLet(
-                                x.clone(),
-                                Box::new(p_def),
-                                Box::new(p_body),
-                            ),
-                            type_of: t.clone(),
-                        },
-                    )
-                }
-                BareProgram::PIf(i_cond, i_then, i_else)
-                    if matches!(i_cond.content, BareProgram::PHole)
-                        && i_cond.type_of == TypeSkeleton::AnyT =>
-                {
-                    let c_unknown =
-                        Formula::Unknown(BTreeMap::new(), try_step!(fresh_id(ctx, "C")));
-                    add_constraint(
-                        ctx,
-                        Constraint::WellFormedCond(env.clone(), c_unknown.clone()),
-                    );
-                    let env_then = Rc::new(add_assumption(c_unknown.clone(), env));
-                    let wrap_then: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let t = t.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PIf(
-                                Box::new(RProgram {
-                                    content: BareProgram::PHole,
-                                    type_of: bool_all(),
-                                }),
-                                Box::new(p.clone()),
-                                Box::new(RProgram {
-                                    content: BareProgram::PHole,
-                                    type_of: t.clone(),
-                                }),
-                            ),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let p_then = try_step!(in_context(ctx, wrap_then, |ctx| {
-                        reconstruct_i(ctx, &env_then, t, i_then)
-                    }));
-                    let cond = conjunction(&try_step!(current_valuation(ctx, &c_unknown)));
-                    let wrap_cond: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let t = t.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PIf(
-                                Box::new(p.clone()),
-                                Box::new(u_hole()),
-                                Box::new(u_hole()),
-                            ),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let p_cond = try_step!(in_context(ctx, wrap_cond, |ctx| {
-                        generate_condition(ctx, env, &cond)
-                    }));
-                    let p_cond_c = p_cond.clone();
-                    let p_then_c = p_then.clone();
-                    let env_c = env.clone();
-                    let cond_c = cond.clone();
-                    let t_c = t.clone();
-                    let p_else = try_step!(optional_in_partial(ctx, t, {
-                        move |ctx| {
-                            let wrap_else: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                                let t = t_c.clone();
-                                Rc::new(move |p| RProgram {
-                                    content: BareProgram::PIf(
-                                        Box::new(p_cond_c.clone()),
-                                        Box::new(p_then_c.clone()),
-                                        Box::new(p.clone()),
-                                    ),
-                                    type_of: t.clone(),
+                TypeSkeleton::FunctionT(_, t_arg, t_res) => {
+                    match p {
+                        BareProgram::PFun(y, impl_body) => {
+                            let wrap: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let y = y.clone();
+                                let t = t.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PFun(y.clone(), Box::new(p.clone())),
+                                        type_of: t.clone(),
+                                    }
                                 })
                             };
-                            in_context(ctx, wrap_else, |ctx| {
-                                let env_else =
-                                    Rc::new(add_assumption(fnot(cond_c.clone()), &env_c));
-                                reconstruct_i(ctx, &env_else, &t_c, i_else)
+                            let t_arg = (**t_arg).clone();
+                            let t_res = (**t_res).clone();
+                            let env2 = Rc::new(unfold_all_variables(&add_variable(y, &t_arg, env)));
+                            let p_body = try_step!(in_context(ctx, wrap.clone(), |ctx| {
+                                reconstruct_i(ctx, &env2, &t_res, impl_body)
+                            }));
+                            ret(ctx, wrap(&p_body))
+                        }
+                        BareProgram::PSymbol(f) => {
+                            let fun = try_step!(eta_expand(ctx, t, f));
+                            reconstruct_i_prime(ctx, env, t, &fun.content)
+                        }
+                        _ => {
+                            throw_error(
+                                ctx,
+                                &ErrorMessage::new(
+                                    ErrorKind::TypeError,
+                                    ctx.reader.params.source_pos.clone(),
+                                    text(&format!(
+                                        "Cannot assign function type {} to non-lambda term {}",
+                                        pretty_type(t),
+                                        pretty_pgm(&untyped(p.clone())),
+                                    )),
+                                ),
+                            )
+                        }
+                    }
+                }
+                TypeSkeleton::ScalarT(..) => {
+                    match p {
+                        BareProgram::PFun(..) => {
+                            throw_error(
+                                ctx,
+                                &ErrorMessage::new(
+                                    ErrorKind::TypeError,
+                                    ctx.reader.params.source_pos.clone(),
+                                    text(&format!(
+                                        "Cannot assign non-function type {} to lambda term {}",
+                                        pretty_type(t),
+                                        pretty_pgm(&untyped(p.clone())),
+                                    )),
+                                ),
+                            )
+                        }
+                        BareProgram::PLet(x, i_def, i_body) => {
+                            let wrap_def: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let x = x.clone();
+                                let t = t.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PLet(
+                                            x.clone(),
+                                            Box::new(p.clone()),
+                                            Box::new(RProgram {
+                                                content: BareProgram::PHole,
+                                                type_of: t.clone(),
+                                            }),
+                                        ),
+                                        type_of: t.clone(),
+                                    }
+                                })
+                            };
+                            let p_def = try_step!(in_context(ctx, wrap_def, |ctx| {
+                                reconstruct_e_top_level(ctx, env, &TypeSkeleton::AnyT, i_def)
+                            }));
+                            let (env_prime, t_def) = embed_context(env, &p_def.type_of);
+                            let wrap_body: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let x = x.clone();
+                                let t = t.clone();
+                                let p_def = p_def.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PLet(
+                                            x.clone(),
+                                            Box::new(p_def.clone()),
+                                            Box::new(p.clone()),
+                                        ),
+                                        type_of: t.clone(),
+                                    }
+                                })
+                            };
+                            let env_prime2 = Rc::new(add_variable(x, &t_def, &env_prime));
+                            let p_body = try_step!(in_context(ctx, wrap_body, |ctx| {
+                                reconstruct_i(ctx, &env_prime2, t, i_body)
+                            }));
+                            ret(ctx, RProgram {
+                                content: BareProgram::PLet(
+                                    x.clone(),
+                                    Box::new(p_def),
+                                    Box::new(p_body),
+                                ),
+                                type_of: t.clone(),
                             })
                         }
-                    }));
-                    ret(
-                        ctx,
-                        RProgram {
-                            content: BareProgram::PIf(
-                                Box::new(p_cond),
-                                Box::new(p_then),
-                                Box::new(p_else),
-                            ),
-                            type_of: t.clone(),
-                        },
-                    )
-                }
-                BareProgram::PIf(i_cond, i_then, i_else) => {
-                    let wrap_cond: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let t = t.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PIf(
-                                Box::new(p.clone()),
-                                Box::new(RProgram {
-                                    content: BareProgram::PHole,
-                                    type_of: t.clone(),
-                                }),
-                                Box::new(RProgram {
-                                    content: BareProgram::PHole,
-                                    type_of: t.clone(),
-                                }),
-                            ),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let p_cond = try_step!(in_context(ctx, wrap_cond, |ctx| {
-                        reconstruct_e_top_level(
-                            ctx,
-                            env,
-                            &TypeSkeleton::ScalarT(BaseType::BoolT, crate::logic::ftrue()),
-                            i_cond,
-                        )
-                    }));
-                    let (env_prime, cond) = match embed_context(env, &p_cond.type_of) {
-                        (env_prime, TypeSkeleton::ScalarT(BaseType::BoolT, cond)) => {
-                            (env_prime, cond)
+                        BareProgram::PIf(i_cond, i_then, i_else)
+                            if matches!(i_cond.content, BareProgram::PHole)
+                                && i_cond.type_of == TypeSkeleton::AnyT =>
+                        {
+                            let c_unknown =
+                                Formula::Unknown(BTreeMap::new(), try_step!(fresh_id(ctx, "C")));
+                            add_constraint(
+                                ctx,
+                                Constraint::WellFormedCond(env.clone(), c_unknown.clone()),
+                            );
+                            let env_then = Rc::new(add_assumption(c_unknown.clone(), env));
+                            let wrap_then: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let t = t.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PIf(
+                                            Box::new(RProgram {
+                                                content: BareProgram::PHole,
+                                                type_of: bool_all(),
+                                            }),
+                                            Box::new(p.clone()),
+                                            Box::new(RProgram {
+                                                content: BareProgram::PHole,
+                                                type_of: t.clone(),
+                                            }),
+                                        ),
+                                        type_of: t.clone(),
+                                    }
+                                })
+                            };
+                            let p_then = try_step!(in_context(ctx, wrap_then, |ctx| {
+                                reconstruct_i(ctx, &env_then, t, i_then)
+                            }));
+                            let cond = conjunction(&try_step!(current_valuation(ctx, &c_unknown)));
+                            let wrap_cond: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let t = t.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PIf(
+                                            Box::new(p.clone()),
+                                            Box::new(u_hole()),
+                                            Box::new(u_hole()),
+                                        ),
+                                        type_of: t.clone(),
+                                    }
+                                })
+                            };
+                            let p_cond = try_step!(in_context(ctx, wrap_cond, |ctx| {
+                                generate_condition(ctx, env, &cond)
+                            }));
+                            let p_cond_c = p_cond.clone();
+                            let p_then_c = p_then.clone();
+                            let env_c = env.clone();
+                            let cond_c = cond.clone();
+                            let t_c = t.clone();
+                            let p_else = try_step!(optional_in_partial(ctx, t, {
+                                move |ctx| {
+                                    let wrap_else: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                        let t = t_c.clone();
+                                        Rc::new(move |p| {
+                                            RProgram {
+                                                content: BareProgram::PIf(
+                                                    Box::new(p_cond_c.clone()),
+                                                    Box::new(p_then_c.clone()),
+                                                    Box::new(p.clone()),
+                                                ),
+                                                type_of: t.clone(),
+                                            }
+                                        })
+                                    };
+                                    in_context(ctx, wrap_else, |ctx| {
+                                        let env_else =
+                                            Rc::new(add_assumption(fnot(cond_c.clone()), &env_c));
+                                        reconstruct_i(ctx, &env_else, &t_c, i_else)
+                                    })
+                                }
+                            }));
+                            ret(ctx, RProgram {
+                                content: BareProgram::PIf(
+                                    Box::new(p_cond),
+                                    Box::new(p_then),
+                                    Box::new(p_else),
+                                ),
+                                type_of: t.clone(),
+                            })
                         }
-                        _ => unreachable!("reconstructI': non-bool condition"),
-                    };
-                    let sub = |v: Formula| Substitution::from([(VALUE_VAR_NAME.to_string(), v)]);
-                    let wrap_then: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let t = t.clone();
-                        let p_cond = p_cond.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PIf(
-                                Box::new(p_cond.clone()),
-                                Box::new(p.clone()),
-                                Box::new(RProgram {
-                                    content: BareProgram::PHole,
-                                    type_of: t.clone(),
-                                }),
-                            ),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let env_then = Rc::new(add_assumption(
-                        substitute(&sub(crate::logic::ftrue()), cond.clone()),
-                        &env_prime,
-                    ));
-                    let p_then = try_step!(in_context(ctx, wrap_then, |ctx| {
-                        reconstruct_i(ctx, &env_then, t, i_then)
-                    }));
-                    let wrap_else: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let t = t.clone();
-                        let p_cond = p_cond.clone();
-                        let p_then = p_then.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PIf(
-                                Box::new(p_cond.clone()),
-                                Box::new(p_then.clone()),
-                                Box::new(p.clone()),
-                            ),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let env_else = Rc::new(add_assumption(
-                        substitute(&sub(crate::logic::ffalse()), cond),
-                        &env_prime,
-                    ));
-                    let p_else = try_step!(in_context(ctx, wrap_else, |ctx| {
-                        reconstruct_i(ctx, &env_else, t, i_else)
-                    }));
-                    ret(
-                        ctx,
-                        RProgram {
-                            content: BareProgram::PIf(
-                                Box::new(p_cond),
-                                Box::new(p_then),
-                                Box::new(p_else),
-                            ),
-                            type_of: t.clone(),
-                        },
-                    )
-                }
-                BareProgram::PMatch(i_scr, i_cases) => {
-                    let cons = try_step!(check_cases(ctx, None, i_cases, env));
-                    let cons_types: Vec<RType> = cons.iter().map(|(_, t)| t.clone()).collect();
-                    let scr_t = refine_top(env, &shape(&last_type(&cons_types[0])));
-                    let t = t.clone();
-                    let wrap_scr: Rc<dyn Fn(&RProgram) -> RProgram> = {
-                        let t = t.clone();
-                        Rc::new(move |p| RProgram {
-                            content: BareProgram::PMatch(Box::new(p.clone()), Vec::new()),
-                            type_of: t.clone(),
-                        })
-                    };
-                    let p_scrutinee = try_step!(in_context(ctx, wrap_scr, |ctx| {
-                        reconstruct_e_top_level(ctx, env, &scr_t, i_scr)
-                    }));
-                    let env_prime = embed_context(env, &p_scrutinee.type_of).0;
-                    let scrutinee_symbols = symbol_list(&p_scrutinee);
-                    let is_good_scrutinee = scrutinee_symbols
-                        .first()
-                        .is_none_or(|h| !cons.iter().any(|(c, _)| c == h))
-                        && scrutinee_symbols.iter().any(|x| !env.constants.contains(x));
-                    if !is_good_scrutinee {
-                        return throw_error(
-                            ctx,
-                            &ErrorMessage::new(
-                                ErrorKind::TypeError,
-                                ctx.reader.params.source_pos.clone(),
-                                text(&format!(
-                                    "Match scrutinee {} is constant",
-                                    pretty_pgm(&p_scrutinee),
-                                )),
-                            ),
-                        );
+                        BareProgram::PIf(i_cond, i_then, i_else) => {
+                            let wrap_cond: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let t = t.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PIf(
+                                            Box::new(p.clone()),
+                                            Box::new(RProgram {
+                                                content: BareProgram::PHole,
+                                                type_of: t.clone(),
+                                            }),
+                                            Box::new(RProgram {
+                                                content: BareProgram::PHole,
+                                                type_of: t.clone(),
+                                            }),
+                                        ),
+                                        type_of: t.clone(),
+                                    }
+                                })
+                            };
+                            let p_cond = try_step!(in_context(ctx, wrap_cond, |ctx| {
+                                reconstruct_e_top_level(
+                                    ctx,
+                                    env,
+                                    &TypeSkeleton::ScalarT(BaseType::BoolT, crate::logic::ftrue()),
+                                    i_cond,
+                                )
+                            }));
+                            let (env_prime, cond) = match embed_context(env, &p_cond.type_of) {
+                                (env_prime, TypeSkeleton::ScalarT(BaseType::BoolT, cond)) => {
+                                    (env_prime, cond)
+                                }
+                                _ => unreachable!("reconstructI': non-bool condition"),
+                            };
+                            let sub =
+                                |v: Formula| Substitution::from([(VALUE_VAR_NAME.to_string(), v)]);
+                            let wrap_then: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let t = t.clone();
+                                let p_cond = p_cond.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PIf(
+                                            Box::new(p_cond.clone()),
+                                            Box::new(p.clone()),
+                                            Box::new(RProgram {
+                                                content: BareProgram::PHole,
+                                                type_of: t.clone(),
+                                            }),
+                                        ),
+                                        type_of: t.clone(),
+                                    }
+                                })
+                            };
+                            let env_then = Rc::new(add_assumption(
+                                substitute(&sub(crate::logic::ftrue()), cond.clone()),
+                                &env_prime,
+                            ));
+                            let p_then = try_step!(in_context(ctx, wrap_then, |ctx| {
+                                reconstruct_i(ctx, &env_then, t, i_then)
+                            }));
+                            let wrap_else: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let t = t.clone();
+                                let p_cond = p_cond.clone();
+                                let p_then = p_then.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PIf(
+                                            Box::new(p_cond.clone()),
+                                            Box::new(p_then.clone()),
+                                            Box::new(p.clone()),
+                                        ),
+                                        type_of: t.clone(),
+                                    }
+                                })
+                            };
+                            let env_else = Rc::new(add_assumption(
+                                substitute(&sub(crate::logic::ffalse()), cond),
+                                &env_prime,
+                            ));
+                            let p_else = try_step!(in_context(ctx, wrap_else, |ctx| {
+                                reconstruct_i(ctx, &env_else, t, i_else)
+                            }));
+                            ret(ctx, RProgram {
+                                content: BareProgram::PIf(
+                                    Box::new(p_cond),
+                                    Box::new(p_then),
+                                    Box::new(p_else),
+                                ),
+                                type_of: t.clone(),
+                            })
+                        }
+                        BareProgram::PMatch(i_scr, i_cases) => {
+                            let cons = try_step!(check_cases(ctx, None, i_cases, env));
+                            let cons_types: Vec<RType> =
+                                cons.iter().map(|(_, t)| t.clone()).collect();
+                            let scr_t = refine_top(env, &shape(&last_type(&cons_types[0])));
+                            let t = t.clone();
+                            let wrap_scr: Rc<dyn Fn(&RProgram) -> RProgram> = {
+                                let t = t.clone();
+                                Rc::new(move |p| {
+                                    RProgram {
+                                        content: BareProgram::PMatch(
+                                            Box::new(p.clone()),
+                                            Vec::new(),
+                                        ),
+                                        type_of: t.clone(),
+                                    }
+                                })
+                            };
+                            let p_scrutinee = try_step!(in_context(ctx, wrap_scr, |ctx| {
+                                reconstruct_e_top_level(ctx, env, &scr_t, i_scr)
+                            }));
+                            let env_prime = embed_context(env, &p_scrutinee.type_of).0;
+                            let scrutinee_symbols = symbol_list(&p_scrutinee);
+                            let is_good_scrutinee = scrutinee_symbols
+                                .first()
+                                .is_none_or(|h| !cons.iter().any(|(c, _)| c == h))
+                                && scrutinee_symbols.iter().any(|x| !env.constants.contains(x));
+                            if !is_good_scrutinee {
+                                return throw_error(
+                                    ctx,
+                                    &ErrorMessage::new(
+                                        ErrorKind::TypeError,
+                                        ctx.reader.params.source_pos.clone(),
+                                        text(&format!(
+                                            "Match scrutinee {} is constant",
+                                            pretty_pgm(&p_scrutinee),
+                                        )),
+                                    ),
+                                );
+                            }
+                            let (env_prime2, x) = try_step!(to_var(
+                                ctx,
+                                &Rc::new(add_scrutinee(p_scrutinee.clone(), &env_prime)),
+                                &p_scrutinee,
+                            ));
+                            let mut p_cases = Vec::new();
+                            for (i_case, cons_t) in i_cases.iter().zip(&cons_types) {
+                                let c = try_step!(reconstruct_case(
+                                    ctx,
+                                    &env_prime2,
+                                    &x,
+                                    &p_scrutinee,
+                                    &t,
+                                    i_case,
+                                    cons_t,
+                                ));
+                                p_cases.push(c);
+                            }
+                            ret(ctx, RProgram {
+                                content: BareProgram::PMatch(Box::new(p_scrutinee), p_cases),
+                                type_of: t,
+                            })
+                        }
+                        _ => reconstruct_e_top_level(ctx, env, t, &untyped(p.clone())),
                     }
-                    let (env_prime2, x) = try_step!(to_var(
-                        ctx,
-                        &Rc::new(add_scrutinee(p_scrutinee.clone(), &env_prime)),
-                        &p_scrutinee,
-                    ));
-                    let mut p_cases = Vec::new();
-                    for (i_case, cons_t) in i_cases.iter().zip(&cons_types) {
-                        let c = try_step!(reconstruct_case(
-                            ctx,
-                            &env_prime2,
-                            &x,
-                            &p_scrutinee,
-                            &t,
-                            i_case,
-                            cons_t,
-                        ));
-                        p_cases.push(c);
-                    }
-                    ret(
-                        ctx,
-                        RProgram {
-                            content: BareProgram::PMatch(Box::new(p_scrutinee), p_cases),
-                            type_of: t,
-                        },
-                    )
                 }
-                _ => reconstruct_e_top_level(ctx, env, t, &untyped(p.clone())),
-            },
-            TypeSkeleton::AnyT => reconstruct_e_top_level(ctx, env, t, &untyped(p.clone())),
-        },
+                TypeSkeleton::AnyT => reconstruct_e_top_level(ctx, env, t, &untyped(p.clone())),
+            }
+        }
     }
 }
 
@@ -839,14 +884,16 @@ fn check_cases(
             v.extend(try_step!(check_cases(ctx, Some(dt_name), &cases[1..], env)));
             ret(ctx, v)
         }
-        _ => throw_error(
-            ctx,
-            &ErrorMessage::new(
-                ErrorKind::TypeError,
-                ctx.reader.params.source_pos.clone(),
-                text(&format!("Not in scope: data constructor {cons_name}")),
-            ),
-        ),
+        _ => {
+            throw_error(
+                ctx,
+                &ErrorMessage::new(
+                    ErrorKind::TypeError,
+                    ctx.reader.params.source_pos.clone(),
+                    text(&format!("Not in scope: data constructor {cons_name}")),
+                ),
+            )
+        }
     }
 }
 
@@ -885,33 +932,33 @@ fn reconstruct_case(
         let p_scrutinee_wrap = p_scrutinee;
         local(
             ctx,
-            move |p| ExplorerParams {
-                match_depth: depth - 1,
-                ..p.clone()
+            move |p| {
+                ExplorerParams {
+                    match_depth: depth - 1,
+                    ..p.clone()
+                }
             },
             move |ctx| {
-                let wrap: Rc<dyn Fn(&RProgram) -> RProgram> = Rc::new(move |p| RProgram {
-                    content: BareProgram::PMatch(
-                        Box::new(p_scrutinee_wrap.clone()),
-                        vec![Case {
-                            constructor: i_case_wrap.constructor.clone(),
-                            arg_names: i_case_wrap.arg_names.clone(),
-                            expr: p.clone(),
-                        }],
-                    ),
-                    type_of: t_wrap.clone(),
+                let wrap: Rc<dyn Fn(&RProgram) -> RProgram> = Rc::new(move |p| {
+                    RProgram {
+                        content: BareProgram::PMatch(Box::new(p_scrutinee_wrap.clone()), vec![
+                            Case {
+                                constructor: i_case_wrap.constructor.clone(),
+                                arg_names: i_case_wrap.arg_names.clone(),
+                                expr: p.clone(),
+                            },
+                        ]),
+                        type_of: t_wrap.clone(),
+                    }
                 });
                 let p_case_expr = try_step!(in_context(ctx, wrap, |ctx| {
                     reconstruct_i(ctx, &case_env, &t, &i_case.expr)
                 },));
-                ret(
-                    ctx,
-                    Case {
-                        constructor: i_case.constructor.clone(),
-                        arg_names: i_case.arg_names.clone(),
-                        expr: p_case_expr,
-                    },
-                )
+                ret(ctx, Case {
+                    constructor: i_case.constructor.clone(),
+                    arg_names: i_case.arg_names.clone(),
+                    expr: p_case_expr,
+                })
             },
         )
     })
@@ -929,13 +976,10 @@ fn reconstruct_e_top_level(
     let p_typ = try_step!(run_in_solver(ctx, |s| {
         Ok(current_assignment(s, &p_term.type_of))
     }));
-    ret(
-        ctx,
-        RProgram {
-            content: p_term.content,
-            type_of: p_typ,
-        },
-    )
+    ret(ctx, RProgram {
+        content: p_term.content,
+        type_of: p_typ,
+    })
 }
 
 /// `reconstructE`: reconstruct unknown types and terms
@@ -1009,9 +1053,11 @@ fn reconstruct_e_prime(
             let x = try_step!(fresh_var(ctx, env, "x"));
             let wrap_fun: Rc<dyn Fn(&RProgram) -> RProgram> = {
                 let typ = typ.clone();
-                Rc::new(move |p| RProgram {
-                    content: BareProgram::PApp(Box::new(p.clone()), Box::new(u_hole())),
-                    type_of: typ.clone(),
+                Rc::new(move |p| {
+                    RProgram {
+                        content: BareProgram::PApp(Box::new(p.clone()), Box::new(u_hole())),
+                        type_of: typ.clone(),
+                    }
                 })
             };
             let p_fun = try_step!(in_context(ctx, wrap_fun, |ctx| {
@@ -1043,9 +1089,14 @@ fn reconstruct_e_prime(
                 let wrap_arg: Rc<dyn Fn(&RProgram) -> RProgram> = {
                     let typ = typ.clone();
                     let p_fun = p_fun.clone();
-                    Rc::new(move |p| RProgram {
-                        content: BareProgram::PApp(Box::new(p_fun.clone()), Box::new(p.clone())),
-                        type_of: typ.clone(),
+                    Rc::new(move |p| {
+                        RProgram {
+                            content: BareProgram::PApp(
+                                Box::new(p_fun.clone()),
+                                Box::new(p.clone()),
+                            ),
+                            type_of: typ.clone(),
+                        }
                     })
                 };
                 let p_arg = try_step!(in_context(ctx, wrap_arg, |ctx| {
@@ -1060,18 +1111,20 @@ fn reconstruct_e_prime(
             try_step!(check_e(ctx, env, typ, &p_app));
             ret(ctx, p_app)
         }
-        _ => throw_error(
-            ctx,
-            &ErrorMessage::new(
-                ErrorKind::TypeError,
-                no_pos(),
-                text(&format!(
-                    "Expected application term of type {} and got {}",
-                    pretty_type(typ),
-                    pretty_pgm(&untyped(p.clone())),
-                )),
-            ),
-        ),
+        _ => {
+            throw_error(
+                ctx,
+                &ErrorMessage::new(
+                    ErrorKind::TypeError,
+                    no_pos(),
+                    text(&format!(
+                        "Expected application term of type {} and got {}",
+                        pretty_type(typ),
+                        pretty_pgm(&untyped(p.clone())),
+                    )),
+                ),
+            )
+        }
     }
 }
 
@@ -1092,18 +1145,15 @@ fn generate_ho_arg(
                 ret(ctx, i_arg.clone())
             }
             Some((env_prime, def)) => {
-                Rc::make_mut(&mut ctx.state.aux_goals).insert(
-                    0,
-                    Goal {
-                        g_name: f.clone(),
-                        g_environment: env_prime.clone(),
-                        g_spec: SchemaSkeleton::Monotype(t_arg.clone()),
-                        g_impl: def.clone(),
-                        g_depth: d,
-                        g_source_pos: no_pos(),
-                        g_synthesize: true,
-                    },
-                );
+                Rc::make_mut(&mut ctx.state.aux_goals).insert(0, Goal {
+                    g_name: f.clone(),
+                    g_environment: env_prime.clone(),
+                    g_spec: SchemaSkeleton::Monotype(t_arg.clone()),
+                    g_impl: def.clone(),
+                    g_depth: d,
+                    g_source_pos: no_pos(),
+                    g_synthesize: true,
+                });
                 ret(ctx, i_arg.clone())
             }
         }
@@ -1202,49 +1252,63 @@ fn eta_expand(ctx: &mut ExplorerCtx<'_>, t: &RType, f: &String) -> Step<UProgram
 /// `p_auxs` indexed by names of auxiliary goals `x` into `p_main`.
 fn insert_aux_solutions(p_auxs: &BTreeMap<String, RProgram>, p: &RProgram) -> RProgram {
     let body = match &p.content {
-        BareProgram::PLet(y, def, body) => match p_auxs.get(y) {
-            None => BareProgram::PLet(
-                y.clone(),
-                Box::new(insert_aux_solutions(p_auxs, def)),
-                Box::new(insert_aux_solutions(p_auxs, body)),
-            ),
-            Some(p_aux) => {
-                let mut rest = p_auxs.clone();
-                rest.remove(y);
-                BareProgram::PLet(
-                    y.clone(),
-                    Box::new(p_aux.clone()),
-                    Box::new(insert_aux_solutions(&rest, body)),
-                )
+        BareProgram::PLet(y, def, body) => {
+            match p_auxs.get(y) {
+                None => {
+                    BareProgram::PLet(
+                        y.clone(),
+                        Box::new(insert_aux_solutions(p_auxs, def)),
+                        Box::new(insert_aux_solutions(p_auxs, body)),
+                    )
+                }
+                Some(p_aux) => {
+                    let mut rest = p_auxs.clone();
+                    rest.remove(y);
+                    BareProgram::PLet(
+                        y.clone(),
+                        Box::new(p_aux.clone()),
+                        Box::new(insert_aux_solutions(&rest, body)),
+                    )
+                }
             }
-        },
-        BareProgram::PSymbol(y) => match p_auxs.get(y) {
-            None => p.content.clone(),
-            Some(p_aux) => p_aux.content.clone(),
-        },
-        BareProgram::PApp(f, a) => BareProgram::PApp(
-            Box::new(insert_aux_solutions(p_auxs, f)),
-            Box::new(insert_aux_solutions(p_auxs, a)),
-        ),
+        }
+        BareProgram::PSymbol(y) => {
+            match p_auxs.get(y) {
+                None => p.content.clone(),
+                Some(p_aux) => p_aux.content.clone(),
+            }
+        }
+        BareProgram::PApp(f, a) => {
+            BareProgram::PApp(
+                Box::new(insert_aux_solutions(p_auxs, f)),
+                Box::new(insert_aux_solutions(p_auxs, a)),
+            )
+        }
         BareProgram::PFun(y, b) => {
             BareProgram::PFun(y.clone(), Box::new(insert_aux_solutions(p_auxs, b)))
         }
-        BareProgram::PIf(c, a, b) => BareProgram::PIf(
-            Box::new(insert_aux_solutions(p_auxs, c)),
-            Box::new(insert_aux_solutions(p_auxs, a)),
-            Box::new(insert_aux_solutions(p_auxs, b)),
-        ),
-        BareProgram::PMatch(s, cases) => BareProgram::PMatch(
-            Box::new(insert_aux_solutions(p_auxs, s)),
-            cases
-                .iter()
-                .map(|c| Case {
-                    constructor: c.constructor.clone(),
-                    arg_names: c.arg_names.clone(),
-                    expr: insert_aux_solutions(p_auxs, &c.expr),
-                })
-                .collect(),
-        ),
+        BareProgram::PIf(c, a, b) => {
+            BareProgram::PIf(
+                Box::new(insert_aux_solutions(p_auxs, c)),
+                Box::new(insert_aux_solutions(p_auxs, a)),
+                Box::new(insert_aux_solutions(p_auxs, b)),
+            )
+        }
+        BareProgram::PMatch(s, cases) => {
+            BareProgram::PMatch(
+                Box::new(insert_aux_solutions(p_auxs, s)),
+                cases
+                    .iter()
+                    .map(|c| {
+                        Case {
+                            constructor: c.constructor.clone(),
+                            arg_names: c.arg_names.clone(),
+                            expr: insert_aux_solutions(p_auxs, &c.expr),
+                        }
+                    })
+                    .collect(),
+            )
+        }
         BareProgram::PFix(ys, b) => {
             BareProgram::PFix(ys.clone(), Box::new(insert_aux_solutions(p_auxs, b)))
         }

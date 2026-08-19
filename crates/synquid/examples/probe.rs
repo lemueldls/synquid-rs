@@ -1,7 +1,6 @@
 use std::time::Instant;
-use synquid::pretty::show_doc;
 
-use synquid::parser::parse_program;
+use synquid::{parser::parse_program, pretty::show_doc};
 
 fn probe(name: &str, input: &str) {
     let start = Instant::now();
@@ -11,7 +10,9 @@ fn probe(name: &str, input: &str) {
         Err(e) => {
             println!(
                 "    err: {} at {}:{}",
-                show_doc(&e.description), e.position.line, e.position.column
+                show_doc(&e.description),
+                e.position.line,
+                e.position.column
             );
         }
     }

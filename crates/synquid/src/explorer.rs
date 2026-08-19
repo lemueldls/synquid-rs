@@ -21,35 +21,35 @@ use std::{
 
 use crate::{
     cli::ExplorerParams,
-    error::{no_pos, ErrorKind, ErrorMessage},
+    error::{ErrorKind, ErrorMessage, no_pos},
     horn_solver::FixPointSolver,
     logic::{
-        conjunction, conjuncts_of, de_brujns, eq, ffalse, fnot, ftrue, is_executable,
-        sort_substitute, substitute, unknown_name, val_bool, valuation, vars_of, BinOp, Formula,
-        Sort, Substitution, VALUE_VAR_NAME,
+        BinOp, Formula, Sort, Substitution, VALUE_VAR_NAME, conjunction, conjuncts_of, de_brujns,
+        eq, ffalse, fnot, ftrue, is_executable, sort_substitute, substitute, unknown_name,
+        val_bool, valuation, vars_of,
     },
-    pretty::{empty, pretty_program, pretty_type, program_node_count, soft_break, text, vsp, Doc},
+    pretty::{Doc, empty, pretty_program, pretty_type, program_node_count, soft_break, text, vsp},
     program::{
-        add_assumption, add_let_bound, add_scrutinee, add_variable, all_symbols, bin_op_type,
-        embed_context, error_program, fml_to_program, is_bound, is_hole, lookup_constructor,
-        refine_bot, refine_top, symbol_as_formula, symbol_list, symbols_of, symbols_of_arity,
-        type_substitute_env, u_hole, unfold_all_variables, untyped, BareProgram, Case, Constraint,
-        Environment, Goal, Program, RProgram,
+        BareProgram, Case, Constraint, Environment, Goal, Program, RProgram, add_assumption,
+        add_let_bound, add_scrutinee, add_variable, all_symbols, bin_op_type, embed_context,
+        error_program, fml_to_program, is_bound, is_hole, lookup_constructor, refine_bot,
+        refine_top, symbol_as_formula, symbol_list, symbols_of, symbols_of_arity,
+        type_substitute_env, u_hole, unfold_all_variables, untyped,
     },
     tc_solver::{
-        add_fixed_unknown, add_typing_constraint, all_scalars, current_assignment_tass,
-        finalize_type_state, has_potential_scrutinees_tass, match_cons_type, run_tc_solver,
-        set_unknown_recheck, solve_all_candidates, solve_type_constraints, TcSolver, TypingParams,
-        TypingState,
+        TcSolver, TypingParams, TypingState, add_fixed_unknown, add_typing_constraint, all_scalars,
+        current_assignment_tass, finalize_type_state, has_potential_scrutinees_tass,
+        match_cons_type, run_tc_solver, set_unknown_recheck, solve_all_candidates,
+        solve_type_constraints,
     },
     tokens::{bin_op_tokens, is_literal},
     types::{
-        any_datatype, arity, base_type_of, bool, bool_all, contextual, is_function_type, last_type,
-        rename_var, shape, substitute_in_type, to_monotype, to_sort, type_substitute,
-        type_substitute_pred, var_refinement, vart_all, BaseType, RSchema, RType, SType,
-        SchemaSkeleton, TypeSkeleton,
+        BaseType, RSchema, RType, SType, SchemaSkeleton, TypeSkeleton, any_datatype, arity,
+        base_type_of, bool, bool_all, contextual, is_function_type, last_type, rename_var, shape,
+        substitute_in_type, to_monotype, to_sort, type_substitute, type_substitute_pred,
+        var_refinement, vart_all,
     },
-    util::{disjoint, mapped_compare, set_compare, Id},
+    util::{Id, disjoint, mapped_compare, set_compare},
 };
 
 /// Type of programs with unknown types (`Program RType`).
@@ -196,11 +196,7 @@ pub const fn mzero<A>() -> Step<A> {
 
 /// `guard`: fail unless the condition holds.
 pub fn guard(ctx: &mut ExplorerCtx<'_>, cond: bool) -> Step<()> {
-    if cond {
-        ret(ctx, ())
-    } else {
-        mzero()
-    }
+    if cond { ret(ctx, ()) } else { mzero() }
 }
 
 /// `(>>=)`: for each result `a` of `m`, run `f(a)`; when `f(a)` is exhausted,
@@ -211,30 +207,35 @@ where
     A: 'static,
     B: 'static,
     M: FnOnce(&mut ExplorerCtx<'_>) -> Step<A>,
-    F: FnMut(&mut ExplorerCtx<'_>, A) -> Step<B> + 'static,
-{
+    F: FnMut(&mut ExplorerCtx<'_>, A) -> Step<B> + 'static, {
     match m(ctx) {
         Step::Fail => Step::Fail,
         Step::Ok {
             value: a,
             suspend: sus_m,
-        } => match f(ctx, a) {
-            Step::Fail => bind_rest(ctx, sus_m, f),
-            Step::Ok {
-                value: b,
-                suspend: sus_f,
-            } => Step::Ok {
-                value: b,
-                suspend: Suspend {
-                    state: sus_f.state.clone(),
-                    reader: ctx.reader.clone(),
-                    next: Box::new(move |ctx2| match resume(ctx2, sus_f) {
-                        Step::Fail => bind_rest(ctx2, sus_m, f),
-                        ok => ok,
-                    }),
-                },
-            },
-        },
+        } => {
+            match f(ctx, a) {
+                Step::Fail => bind_rest(ctx, sus_m, f),
+                Step::Ok {
+                    value: b,
+                    suspend: sus_f,
+                } => {
+                    Step::Ok {
+                        value: b,
+                        suspend: Suspend {
+                            state: sus_f.state.clone(),
+                            reader: ctx.reader.clone(),
+                            next: Box::new(move |ctx2| {
+                                match resume(ctx2, sus_f) {
+                                    Step::Fail => bind_rest(ctx2, sus_m, f),
+                                    ok => ok,
+                                }
+                            }),
+                        },
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -245,30 +246,35 @@ fn bind_rest<A, B, F>(ctx: &mut ExplorerCtx<'_>, sus_m: Suspend<A>, mut f: F) ->
 where
     A: 'static,
     B: 'static,
-    F: FnMut(&mut ExplorerCtx<'_>, A) -> Step<B> + 'static,
-{
+    F: FnMut(&mut ExplorerCtx<'_>, A) -> Step<B> + 'static, {
     match resume(ctx, sus_m) {
         Step::Fail => Step::Fail,
         Step::Ok {
             value: a,
             suspend: sus_m2,
-        } => match f(ctx, a) {
-            Step::Fail => bind_rest(ctx, sus_m2, f),
-            Step::Ok {
-                value: b,
-                suspend: sus_f,
-            } => Step::Ok {
-                value: b,
-                suspend: Suspend {
-                    state: sus_f.state.clone(),
-                    reader: ctx.reader.clone(),
-                    next: Box::new(move |ctx2| match resume(ctx2, sus_f) {
-                        Step::Fail => bind_rest(ctx2, sus_m2, f),
-                        ok => ok,
-                    }),
-                },
-            },
-        },
+        } => {
+            match f(ctx, a) {
+                Step::Fail => bind_rest(ctx, sus_m2, f),
+                Step::Ok {
+                    value: b,
+                    suspend: sus_f,
+                } => {
+                    Step::Ok {
+                        value: b,
+                        suspend: Suspend {
+                            state: sus_f.state.clone(),
+                            reader: ctx.reader.clone(),
+                            next: Box::new(move |ctx2| {
+                                match resume(ctx2, sus_f) {
+                                    Step::Fail => bind_rest(ctx2, sus_m2, f),
+                                    ok => ok,
+                                }
+                            }),
+                        },
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -312,25 +318,27 @@ fn mplus_next<A: 'static>(
     m2: ExplorerFn<A>,
     _reader: ExplorerReader,
 ) -> Next<A> {
-    Box::new(move |ctx| match resume(ctx, sus1) {
-        Step::Fail => {
-            ctx.state = fork_state;
-            m2(ctx)
-        }
-        Step::Ok {
-            value: v,
-            suspend: sus1,
-        } => {
-            let fork_state = fork_state.clone();
-            let m2 = m2.clone();
-            let reader = ctx.reader.clone();
+    Box::new(move |ctx| {
+        match resume(ctx, sus1) {
+            Step::Fail => {
+                ctx.state = fork_state;
+                m2(ctx)
+            }
             Step::Ok {
                 value: v,
-                suspend: Suspend {
-                    state: sus1.state.clone(),
-                    reader: reader.clone(),
-                    next: mplus_next(sus1, fork_state, m2, reader),
-                },
+                suspend: sus1,
+            } => {
+                let fork_state = fork_state.clone();
+                let m2 = m2.clone();
+                let reader = ctx.reader.clone();
+                Step::Ok {
+                    value: v,
+                    suspend: Suspend {
+                        state: sus1.state.clone(),
+                        reader: reader.clone(),
+                        next: mplus_next(sus1, fork_state, m2, reader),
+                    },
+                }
             }
         }
     })
@@ -355,21 +363,22 @@ pub fn choice<A: 'static>(ctx: &mut ExplorerCtx<'_>, alts: Vec<ExplorerFn<A>>) -
 pub fn cut<A, M>(ctx: &mut ExplorerCtx<'_>, m: M) -> Step<A>
 where
     A: 'static,
-    M: FnOnce(&mut ExplorerCtx<'_>) -> Step<A>,
-{
+    M: FnOnce(&mut ExplorerCtx<'_>) -> Step<A>, {
     match m(ctx) {
         Step::Fail => Step::Fail,
         Step::Ok {
             value: a,
             suspend: _,
-        } => Step::Ok {
-            value: a,
-            suspend: Suspend {
-                state: ctx.state.clone(),
-                reader: ctx.reader.clone(),
-                next: Box::new(|_| Step::Fail),
-            },
-        },
+        } => {
+            Step::Ok {
+                value: a,
+                suspend: Suspend {
+                    state: ctx.state.clone(),
+                    reader: ctx.reader.clone(),
+                    next: Box::new(|_| Step::Fail),
+                },
+            }
+        }
     }
 }
 
@@ -381,8 +390,7 @@ where
     B: 'static,
     T: FnOnce(&mut ExplorerCtx<'_>) -> Step<A>,
     TH: FnMut(&mut ExplorerCtx<'_>, A) -> Step<B> + 'static,
-    EL: FnOnce(&mut ExplorerCtx<'_>) -> Step<B>,
-{
+    EL: FnOnce(&mut ExplorerCtx<'_>) -> Step<B>, {
     let fork_state = ctx.state.clone();
     match t(ctx) {
         Step::Fail => {
@@ -392,23 +400,29 @@ where
         Step::Ok {
             value: a,
             suspend: sus_t,
-        } => match th(ctx, a) {
-            Step::Fail => ifte_rest(ctx, sus_t, th),
-            Step::Ok {
-                value: b,
-                suspend: sus_th,
-            } => Step::Ok {
-                value: b,
-                suspend: Suspend {
-                    state: sus_th.state.clone(),
-                    reader: ctx.reader.clone(),
-                    next: Box::new(move |ctx2| match resume(ctx2, sus_th) {
-                        Step::Fail => ifte_rest(ctx2, sus_t, th),
-                        ok => ok,
-                    }),
-                },
-            },
-        },
+        } => {
+            match th(ctx, a) {
+                Step::Fail => ifte_rest(ctx, sus_t, th),
+                Step::Ok {
+                    value: b,
+                    suspend: sus_th,
+                } => {
+                    Step::Ok {
+                        value: b,
+                        suspend: Suspend {
+                            state: sus_th.state.clone(),
+                            reader: ctx.reader.clone(),
+                            next: Box::new(move |ctx2| {
+                                match resume(ctx2, sus_th) {
+                                    Step::Fail => ifte_rest(ctx2, sus_t, th),
+                                    ok => ok,
+                                }
+                            }),
+                        },
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -418,30 +432,35 @@ fn ifte_rest<A, B, TH>(ctx: &mut ExplorerCtx<'_>, sus_t: Suspend<A>, mut th: TH)
 where
     A: 'static,
     B: 'static,
-    TH: FnMut(&mut ExplorerCtx<'_>, A) -> Step<B> + 'static,
-{
+    TH: FnMut(&mut ExplorerCtx<'_>, A) -> Step<B> + 'static, {
     match resume(ctx, sus_t) {
         Step::Fail => Step::Fail,
         Step::Ok {
             value: a,
             suspend: sus_t2,
-        } => match th(ctx, a) {
-            Step::Fail => ifte_rest(ctx, sus_t2, th),
-            Step::Ok {
-                value: b,
-                suspend: sus_th,
-            } => Step::Ok {
-                value: b,
-                suspend: Suspend {
-                    state: sus_th.state.clone(),
-                    reader: ctx.reader.clone(),
-                    next: Box::new(move |ctx2| match resume(ctx2, sus_th) {
-                        Step::Fail => ifte_rest(ctx2, sus_t2, th),
-                        ok => ok,
-                    }),
-                },
-            },
-        },
+        } => {
+            match th(ctx, a) {
+                Step::Fail => ifte_rest(ctx, sus_t2, th),
+                Step::Ok {
+                    value: b,
+                    suspend: sus_th,
+                } => {
+                    Step::Ok {
+                        value: b,
+                        suspend: Suspend {
+                            state: sus_th.state.clone(),
+                            reader: ctx.reader.clone(),
+                            next: Box::new(move |ctx2| {
+                                match resume(ctx2, sus_th) {
+                                    Step::Fail => ifte_rest(ctx2, sus_t2, th),
+                                    ok => ok,
+                                }
+                            }),
+                        },
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -452,8 +471,7 @@ where
 fn msplit<A, M>(ctx: &mut ExplorerCtx<'_>, m: M) -> Step<(A, ExplorerFn<A>)>
 where
     A: 'static,
-    M: FnOnce(&mut ExplorerCtx<'_>) -> Step<A>,
-{
+    M: FnOnce(&mut ExplorerCtx<'_>) -> Step<A>, {
     match m(ctx) {
         Step::Fail => Step::Fail,
         Step::Ok { value: a, suspend } => {
@@ -461,9 +479,11 @@ where
             Step::Ok {
                 value: (
                     a,
-                    Rc::new(move |ctx2| match suspend.borrow_mut().take() {
-                        Some(s) => resume(ctx2, s),
-                        None => Step::Fail,
+                    Rc::new(move |ctx2| {
+                        match suspend.borrow_mut().take() {
+                            Some(s) => resume(ctx2, s),
+                            None => Step::Fail,
+                        }
                     }),
                 ),
                 suspend: Suspend {
@@ -483,8 +503,7 @@ where
 pub fn local<A, P, F>(ctx: &mut ExplorerCtx<'_>, update: P, f: F) -> Step<A>
 where
     P: Fn(&ExplorerParams) -> ExplorerParams,
-    F: FnOnce(&mut ExplorerCtx<'_>) -> Step<A>,
-{
+    F: FnOnce(&mut ExplorerCtx<'_>) -> Step<A>, {
     let new_params = Rc::new(update(&ctx.reader.params));
     let old = std::mem::replace(&mut ctx.reader.params, new_params);
     let res = f(ctx);
@@ -531,9 +550,7 @@ fn throw_error_with_description<A>(ctx: &mut ExplorerCtx<'_>, description: Doc) 
 /// Embed a type-constraint-checker computation `f` in the explorer;
 /// on a type error, record the error and backtrack.
 pub fn run_in_solver<A, F>(ctx: &mut ExplorerCtx<'_>, f: F) -> Step<A>
-where
-    F: FnOnce(&mut TcSolver<'_>) -> Result<A, ErrorMessage>,
-{
+where F: FnOnce(&mut TcSolver<'_>) -> Result<A, ErrorMessage> {
     let t_state = (*ctx.state.typing_state).clone();
     let params = ctx.reader.typing_params.clone();
     let horn = &mut *ctx.horn;
@@ -709,13 +726,15 @@ fn instantiate_go(
 ) -> Step<RType> {
     if let TypeSkeleton::FunctionT(x, t_arg, t_res) = t {
         let x1 = match arg_names.first() {
-            None => match fresh_var(ctx, env, "x") {
-                Step::Fail => return Step::Fail,
-                Step::Ok { value: x1, suspend } => {
-                    let _ = suspend;
-                    x1
+            None => {
+                match fresh_var(ctx, env, "x") {
+                    Step::Fail => return Step::Fail,
+                    Step::Ok { value: x1, suspend } => {
+                        let _ = suspend;
+                        x1
+                    }
                 }
-            },
+            }
             Some(arg_name) => arg_name.clone(),
         };
         let t_arg1 = match instantiate_go(ctx, env, subst, p_subst, &[], t_arg) {
@@ -790,20 +809,22 @@ pub fn to_var(
         BareProgram::PSymbol(name) => {
             ret(ctx, (env.clone(), symbol_as_formula(env, name, &p.type_of)))
         }
-        _ => match fresh_id(ctx, "G") {
-            Step::Fail => Step::Fail,
-            Step::Ok { value: g, suspend } => {
-                let _ = suspend;
-                let env1 = Rc::new(add_let_bound(&g, &p.type_of, env));
-                ret(
-                    ctx,
-                    (
-                        env1,
-                        Formula::Var(Box::new(to_sort(&base_type_of(&p.type_of))), g),
-                    ),
-                )
+        _ => {
+            match fresh_id(ctx, "G") {
+                Step::Fail => Step::Fail,
+                Step::Ok { value: g, suspend } => {
+                    let _ = suspend;
+                    let env1 = Rc::new(add_let_bound(&g, &p.type_of, env));
+                    ret(
+                        ctx,
+                        (
+                            env1,
+                            Formula::Var(Box::new(to_sort(&base_type_of(&p.type_of))), g),
+                        ),
+                    )
+                }
             }
-        },
+        }
     }
 }
 
@@ -813,11 +834,13 @@ pub fn to_var(
 #[must_use]
 pub fn app_type(env: &Rc<Environment>, p: &RProgram, x: &Id, t_res: &RType) -> RType {
     match &p.content {
-        BareProgram::PSymbol(name) => substitute_in_type(
-            &|a| is_bound(env, a),
-            &BTreeMap::from([(x.clone(), symbol_as_formula(env, name, &p.type_of))]),
-            t_res,
-        ),
+        BareProgram::PSymbol(name) => {
+            substitute_in_type(
+                &|a| is_bound(env, a),
+                &BTreeMap::from([(x.clone(), symbol_as_formula(env, name, &p.type_of))]),
+                t_res,
+            )
+        }
         _ => contextual(x.clone(), p.type_of.clone(), t_res),
     }
 }
@@ -868,25 +891,19 @@ pub fn enqueue_goal(
         Step::Fail => Step::Fail,
         Step::Ok { value: g, suspend } => {
             let _ = suspend;
-            Rc::make_mut(&mut ctx.state.aux_goals).insert(
-                0,
-                Goal {
-                    g_name: g.clone(),
-                    g_environment: env.clone(),
-                    g_spec: SchemaSkeleton::Monotype(typ.clone()),
-                    g_impl: impl_.clone(),
-                    g_depth: depth,
-                    g_source_pos: no_pos(),
-                    g_synthesize: true,
-                },
-            );
-            ret(
-                ctx,
-                Program {
-                    content: BareProgram::PSymbol(g),
-                    type_of: typ.clone(),
-                },
-            )
+            Rc::make_mut(&mut ctx.state.aux_goals).insert(0, Goal {
+                g_name: g.clone(),
+                g_environment: env.clone(),
+                g_spec: SchemaSkeleton::Monotype(typ.clone()),
+                g_impl: impl_.clone(),
+                g_depth: depth,
+                g_source_pos: no_pos(),
+                g_synthesize: true,
+            });
+            ret(ctx, Program {
+                content: BareProgram::PSymbol(g),
+                type_of: typ.clone(),
+            })
         }
     }
 }
@@ -962,15 +979,17 @@ pub fn generate_condition(
             ),
             type_of: to_monotype(&bin_op_type(BinOp::And)),
         };
-        let conjoin = |p1: &RProgram, p2: &RProgram| Program {
-            content: BareProgram::PApp(
-                Box::new(Program {
-                    content: BareProgram::PApp(Box::new(and_symb), Box::new(p1.clone())),
-                    type_of: bool_all(),
-                }),
-                Box::new(p2.clone()),
-            ),
-            type_of: bool_all(),
+        let conjoin = |p1: &RProgram, p2: &RProgram| {
+            Program {
+                content: BareProgram::PApp(
+                    Box::new(Program {
+                        content: BareProgram::PApp(Box::new(and_symb), Box::new(p1.clone())),
+                        type_of: bool_all(),
+                    }),
+                    Box::new(p2.clone()),
+                ),
+                type_of: bool_all(),
+            }
         };
         partial = Some(match partial {
             None => p,
@@ -982,13 +1001,10 @@ pub fn generate_condition(
         Some(p) => p,
     };
     let body = crate::types::add_refinement(p.type_of.clone(), &eq(val_bool(), fml.clone()));
-    ret(
-        ctx,
-        Program {
-            content: p.content,
-            type_of: body,
-        },
-    )
+    ret(ctx, Program {
+        content: p.content,
+        type_of: body,
+    })
 }
 
 // ─────────────────────── Search functions ───────────────────────
@@ -1004,9 +1020,11 @@ pub fn generate_i(ctx: &mut ExplorerCtx<'_>, env: &Rc<Environment>, t: &RType) -
             let ctx_fn = {
                 let x = x.clone();
                 let t = t.clone();
-                Rc::new(move |p: &RProgram| Program {
-                    content: BareProgram::PFun(x.clone(), Box::new(p.clone())),
-                    type_of: t.clone(),
+                Rc::new(move |p: &RProgram| {
+                    Program {
+                        content: BareProgram::PFun(x.clone(), Box::new(p.clone())),
+                        type_of: t.clone(),
+                    }
                 })
             };
             let p_body = match in_context(ctx, ctx_fn, |ctx2| generate_i(ctx2, &env1, t_res)) {
@@ -1016,13 +1034,10 @@ pub fn generate_i(ctx: &mut ExplorerCtx<'_>, env: &Rc<Environment>, t: &RType) -
                     p
                 }
             };
-            ret(
-                ctx,
-                Program {
-                    content: BareProgram::PFun(x1, Box::new(p_body)),
-                    type_of: t,
-                },
-            )
+            ret(ctx, Program {
+                content: BareProgram::PFun(x1, Box::new(p_body)),
+                type_of: t,
+            })
         }
         TypeSkeleton::ScalarT(..) => {
             let ma_enabled = ctx.reader.params.abduce_scrutinees;
@@ -1049,8 +1064,8 @@ pub fn generate_maybe_if(
     // Guess an E-term and abduce a condition for it.
     let env_then = env.clone();
     let t_then = t.clone();
-    let generate_then: ExplorerFn<(Formula, Id, RProgram)> =
-        Rc::new(move |ctx2| match fresh_unknown(ctx2, "C") {
+    let generate_then: ExplorerFn<(Formula, Id, RProgram)> = Rc::new(move |ctx2| {
+        match fresh_unknown(ctx2, "C") {
             Step::Fail => Step::Fail,
             Step::Ok {
                 value: c_unknown,
@@ -1079,7 +1094,8 @@ pub fn generate_maybe_if(
                 let cond = conjunction(&cond_set);
                 ret(ctx2, (cond, unknown_name(&c_unknown).clone(), p_then))
             }
-        });
+        }
+    });
     let env2 = env.clone();
     let t2 = t.clone();
     let generate_else = Rc::new(
@@ -1122,13 +1138,15 @@ pub fn generate_else(
         let t = t.clone();
         match in_context(
             ctx,
-            Rc::new(move |p: &RProgram| Program {
-                content: BareProgram::PIf(
-                    Box::new(p.clone()),
-                    Box::new(u_hole()),
-                    Box::new(u_hole()),
-                ),
-                type_of: t.clone(),
+            Rc::new(move |p: &RProgram| {
+                Program {
+                    content: BareProgram::PIf(
+                        Box::new(p.clone()),
+                        Box::new(u_hole()),
+                        Box::new(u_hole()),
+                    ),
+                    type_of: t.clone(),
+                }
             }),
             |ctx2| generate_condition(ctx2, env, cond),
         ) {
@@ -1169,13 +1187,15 @@ pub fn generate_else(
         let gen_fn = |ctx2: &mut ExplorerCtx<'_>| {
             in_context(
                 ctx2,
-                Rc::new(move |p: &RProgram| Program {
-                    content: BareProgram::PIf(
-                        Box::new(p_cond.clone()),
-                        Box::new(p_then.clone()),
-                        Box::new(p.clone()),
-                    ),
-                    type_of: t_wrap.clone(),
+                Rc::new(move |p: &RProgram| {
+                    Program {
+                        content: BareProgram::PIf(
+                            Box::new(p_cond.clone()),
+                            Box::new(p_then.clone()),
+                            Box::new(p.clone()),
+                        ),
+                        type_of: t_wrap.clone(),
+                    }
                 }),
                 |ctx3| generate_i(ctx3, &cond_env, &t_gen),
             )
@@ -1215,17 +1235,14 @@ pub fn generate_else(
             suspend,
         } => {
             let _ = suspend;
-            ret(
-                ctx,
-                Program {
-                    content: BareProgram::PIf(
-                        Box::new(p_cond),
-                        Box::new(p_then.clone()),
-                        Box::new(p_else),
-                    ),
-                    type_of: t.clone(),
-                },
-            )
+            ret(ctx, Program {
+                content: BareProgram::PIf(
+                    Box::new(p_cond),
+                    Box::new(p_then.clone()),
+                    Box::new(p_else),
+                ),
+                type_of: t.clone(),
+            })
         }
     }
 }
@@ -1268,19 +1285,14 @@ pub fn try_eliminate_branching(
 /// accepted, try `gen_fn`, and if it fails, just leave a hole of type `t`;
 /// otherwise run `gen_fn`.
 pub fn optional_in_partial<G>(ctx: &mut ExplorerCtx<'_>, t: &RType, gen_fn: G) -> Step<RProgram>
-where
-    G: FnOnce(&mut ExplorerCtx<'_>) -> Step<RProgram>,
-{
+where G: FnOnce(&mut ExplorerCtx<'_>) -> Step<RProgram> {
     if ctx.reader.params.partial_solution {
         let t = t.clone();
         ifte(ctx, gen_fn, ret, |ctx2| {
-            ret(
-                ctx2,
-                Program {
-                    content: BareProgram::PHole,
-                    type_of: t.clone(),
-                },
-            )
+            ret(ctx2, Program {
+                content: BareProgram::PHole,
+                type_of: t.clone(),
+            })
         })
     } else {
         gen_fn(ctx)
@@ -1318,9 +1330,11 @@ pub fn generate_match(
             move |ctx3| {
                 in_context(
                     ctx3,
-                    Rc::new(move |p: &RProgram| Program {
-                        content: BareProgram::PMatch(Box::new(p.clone()), Vec::new()),
-                        type_of: t.clone(),
+                    Rc::new(move |p: &RProgram| {
+                        Program {
+                            content: BareProgram::PMatch(Box::new(p.clone()), Vec::new()),
+                            type_of: t.clone(),
+                        }
                     }),
                     move |ctx4| generate_e(ctx4, &env, &any_datatype()),
                 )
@@ -1333,23 +1347,29 @@ pub fn generate_match(
     let attempt: AttemptFn = Rc::new(move |ctx2, p| scrutinee_attempt(ctx2, &env_a, &t_a, &p));
     match scrutinee_gen(ctx) {
         Step::Fail => Step::Fail,
-        Step::Ok { value: p, suspend } => match attempt(ctx, p) {
-            Step::Fail => match_scrutinee_resume(ctx, suspend, attempt),
-            Step::Ok {
-                value,
-                suspend: sus_a,
-            } => Step::Ok {
-                value,
-                suspend: Suspend {
-                    state: sus_a.state.clone(),
-                    reader: ctx.reader.clone(),
-                    next: Box::new(move |ctx2| match resume(ctx2, sus_a) {
-                        Step::Fail => match_scrutinee_resume(ctx2, suspend, attempt),
-                        ok => ok,
-                    }),
-                },
-            },
-        },
+        Step::Ok { value: p, suspend } => {
+            match attempt(ctx, p) {
+                Step::Fail => match_scrutinee_resume(ctx, suspend, attempt),
+                Step::Ok {
+                    value,
+                    suspend: sus_a,
+                } => {
+                    Step::Ok {
+                        value,
+                        suspend: Suspend {
+                            state: sus_a.state.clone(),
+                            reader: ctx.reader.clone(),
+                            next: Box::new(move |ctx2| {
+                                match resume(ctx2, sus_a) {
+                                    Step::Fail => match_scrutinee_resume(ctx2, suspend, attempt),
+                                    ok => ok,
+                                }
+                            }),
+                        },
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1368,27 +1388,33 @@ fn match_scrutinee_resume(
         };
         match resume(ctx, s) {
             Step::Fail => return Step::Fail,
-            Step::Ok { value: p, suspend } => match attempt(ctx, p) {
-                Step::Fail => {
-                    cur = Some(suspend);
-                }
-                Step::Ok {
-                    value,
-                    suspend: sus_a,
-                } => {
-                    return Step::Ok {
+            Step::Ok { value: p, suspend } => {
+                match attempt(ctx, p) {
+                    Step::Fail => {
+                        cur = Some(suspend);
+                    }
+                    Step::Ok {
                         value,
-                        suspend: Suspend {
-                            state: sus_a.state.clone(),
-                            reader: ctx.reader.clone(),
-                            next: Box::new(move |ctx2| match resume(ctx2, sus_a) {
-                                Step::Fail => match_scrutinee_resume(ctx2, suspend, attempt),
-                                ok => ok,
-                            }),
-                        },
-                    };
+                        suspend: sus_a,
+                    } => {
+                        return Step::Ok {
+                            value,
+                            suspend: Suspend {
+                                state: sus_a.state.clone(),
+                                reader: ctx.reader.clone(),
+                                next: Box::new(move |ctx2| {
+                                    match resume(ctx2, sus_a) {
+                                        Step::Fail => {
+                                            match_scrutinee_resume(ctx2, suspend, attempt)
+                                        }
+                                        ok => ok,
+                                    }
+                                }),
+                            },
+                        };
+                    }
                 }
-            },
+            }
         }
     }
 }
@@ -1518,16 +1544,15 @@ pub fn generate_first_case(
         let b_names = binders_v.clone();
         let err = match in_context(
             ctx2,
-            Rc::new(move |p: &RProgram| Program {
-                content: BareProgram::PMatch(
-                    Box::new(p_scrutinee2.clone()),
-                    vec![Case {
+            Rc::new(move |p: &RProgram| {
+                Program {
+                    content: BareProgram::PMatch(Box::new(p_scrutinee2.clone()), vec![Case {
                         constructor: c_name.clone(),
                         arg_names: b_names.clone(),
                         expr: p.clone(),
-                    }],
-                ),
-                type_of: t.clone(),
+                    }]),
+                    type_of: t.clone(),
+                }
             }),
             |ctx3| generate_error(ctx3, &dead_case_env),
         ) {
@@ -1588,16 +1613,17 @@ pub fn generate_first_case(
                 let binders = binders.clone();
                 in_context(
                     ctx3,
-                    Rc::new(move |p: &RProgram| Program {
-                        content: BareProgram::PMatch(
-                            Box::new(p_scrutinee.clone()),
-                            vec![Case {
-                                constructor: cons_name.clone(),
-                                arg_names: binders.clone(),
-                                expr: p.clone(),
-                            }],
-                        ),
-                        type_of: t_wrap.clone(),
+                    Rc::new(move |p: &RProgram| {
+                        Program {
+                            content: BareProgram::PMatch(Box::new(p_scrutinee.clone()), vec![
+                                Case {
+                                    constructor: cons_name.clone(),
+                                    arg_names: binders.clone(),
+                                    expr: p.clone(),
+                                },
+                            ]),
+                            type_of: t_wrap.clone(),
+                        }
                     }),
                     |ctx4| generate_i(ctx4, &case_env, &t_gen),
                 )
@@ -1748,16 +1774,15 @@ pub fn generate_case(
             let p_scrutinee1 = p_scrutinee.clone();
             let cons_name1 = cons_name.clone();
             let binders1 = binders.clone();
-            let ctx_wrap = Rc::new(move |p: &RProgram| Program {
-                content: BareProgram::PMatch(
-                    Box::new(p_scrutinee1.clone()),
-                    vec![Case {
+            let ctx_wrap = Rc::new(move |p: &RProgram| {
+                Program {
+                    content: BareProgram::PMatch(Box::new(p_scrutinee1.clone()), vec![Case {
                         constructor: cons_name1.clone(),
                         arg_names: binders1.clone(),
                         expr: p.clone(),
-                    }],
-                ),
-                type_of: t1.clone(),
+                    }]),
+                    type_of: t1.clone(),
+                }
             });
             local(
                 ctx2,
@@ -2039,16 +2064,15 @@ pub fn generate_matches_for(
         let c = c.clone();
         in_context(
             ctx2,
-            Rc::new(move |p: &RProgram| Program {
-                content: BareProgram::PMatch(
-                    Box::new(p_scrutinee.clone()),
-                    vec![Case {
+            Rc::new(move |p: &RProgram| {
+                Program {
+                    content: BareProgram::PMatch(Box::new(p_scrutinee.clone()), vec![Case {
                         constructor: c.clone(),
                         arg_names: Vec::new(),
                         expr: p.clone(),
-                    }],
-                ),
-                type_of: t1.clone(),
+                    }]),
+                    type_of: t1.clone(),
+                }
             }),
             move |ctx3| generate_matches_for(&mut *ctx3, &env2, rest, p_base_case, &t3),
         )
@@ -2069,13 +2093,10 @@ pub fn generate_matches_for(
     loop {
         let ctor = match other_ctors.first() {
             None => {
-                return ret(
-                    ctx,
-                    Program {
-                        content: BareProgram::PMatch(Box::new(p_scrutinee.clone()), previous_cases),
-                        type_of: t.clone(),
-                    },
-                );
+                return ret(ctx, Program {
+                    content: BareProgram::PMatch(Box::new(p_scrutinee.clone()), previous_cases),
+                    type_of: t.clone(),
+                });
             }
             Some(ctor) => ctor.clone(),
         };
@@ -2160,16 +2181,18 @@ fn generate_e_rest(
             solver.state.is_final = false;
             res
         }) {
-            Step::Fail => match resume(ctx, suspend) {
-                Step::Fail => return Step::Fail,
-                Step::Ok {
-                    value: p2,
-                    suspend: sus2,
-                } => {
-                    cur = (p2, sus2);
-                    continue;
+            Step::Fail => {
+                match resume(ctx, suspend) {
+                    Step::Fail => return Step::Fail,
+                    Step::Ok {
+                        value: p2,
+                        suspend: sus2,
+                    } => {
+                        cur = (p2, sus2);
+                        continue;
+                    }
                 }
-            },
+            }
             Step::Ok { value: (), suspend } => {
                 let _ = suspend;
             }
@@ -2182,16 +2205,18 @@ fn generate_e_rest(
             .map(|g| g.g_name.clone())
             .collect();
         match generate_aux_goals(ctx) {
-            Step::Fail => match resume(ctx, suspend) {
-                Step::Fail => return Step::Fail,
-                Step::Ok {
-                    value: p2,
-                    suspend: sus2,
-                } => {
-                    cur = (p2, sus2);
-                    continue;
+            Step::Fail => {
+                match resume(ctx, suspend) {
+                    Step::Fail => return Step::Fail,
+                    Step::Ok {
+                        value: p2,
+                        suspend: sus2,
+                    } => {
+                        cur = (p2, sus2);
+                        continue;
+                    }
                 }
-            },
+            }
             Step::Ok { value: (), suspend } => {
                 let _ = suspend;
             }
@@ -2210,17 +2235,21 @@ fn generate_e_rest(
             Step::Ok {
                 value,
                 suspend: sus_ll,
-            } => Step::Ok {
-                value,
-                suspend: Suspend {
-                    state: sus_ll.state.clone(),
-                    reader: ctx.reader.clone(),
-                    next: Box::new(move |ctx2| match resume(ctx2, sus_ll) {
-                        Step::Fail => generate_e_next(ctx2, &env, &typ, suspend),
-                        ok => ok,
-                    }),
-                },
-            },
+            } => {
+                Step::Ok {
+                    value,
+                    suspend: Suspend {
+                        state: sus_ll.state.clone(),
+                        reader: ctx.reader.clone(),
+                        next: Box::new(move |ctx2| {
+                            match resume(ctx2, sus_ll) {
+                                Step::Fail => generate_e_next(ctx2, &env, &typ, suspend),
+                                ok => ok,
+                            }
+                        }),
+                    },
+                }
+            }
         };
     }
 }
@@ -2390,15 +2419,17 @@ fn check_e_loop(
             }
         }
         match check_e(ctx, &env, &typ, &cur.0) {
-            Step::Fail => match resume(ctx, cur.1) {
-                Step::Fail => return Step::Fail,
-                Step::Ok {
-                    value: p2,
-                    suspend: sus2,
-                } => {
-                    cur = (p2, sus2);
+            Step::Fail => {
+                match resume(ctx, cur.1) {
+                    Step::Fail => return Step::Fail,
+                    Step::Ok {
+                        value: p2,
+                        suspend: sus2,
+                    } => {
+                        cur = (p2, sus2);
+                    }
                 }
-            },
+            }
             Step::Ok {
                 value: (),
                 suspend: _,
@@ -2413,12 +2444,14 @@ fn check_e_loop(
                     suspend: Suspend {
                         state,
                         reader,
-                        next: Box::new(move |ctx2| match resume(ctx2, cur1.1) {
-                            Step::Fail => Step::Fail,
-                            Step::Ok {
-                                value: p2,
-                                suspend: sus2,
-                            } => check_e_loop(ctx2, &env1, &typ1, p2, sus2, memo_key.clone()),
+                        next: Box::new(move |ctx2| {
+                            match resume(ctx2, cur1.1) {
+                                Step::Fail => Step::Fail,
+                                Step::Ok {
+                                    value: p2,
+                                    suspend: sus2,
+                                } => check_e_loop(ctx2, &env1, &typ1, p2, sus2, memo_key.clone()),
+                            }
                         }),
                     },
                 };
@@ -2659,9 +2692,11 @@ fn generate_app<'a>(
     let typ1 = typ.clone();
     let fun = match in_context(
         ctx,
-        Rc::new(move |p: &RProgram| Program {
-            content: BareProgram::PApp(Box::new(p.clone()), Box::new(u_hole())),
-            type_of: typ1.clone(),
+        Rc::new(move |p: &RProgram| {
+            Program {
+                content: BareProgram::PApp(Box::new(p.clone()), Box::new(u_hole())),
+                type_of: typ1.clone(),
+            }
         }),
         |ctx2| {
             gen_fun(
@@ -2773,9 +2808,11 @@ fn apps_with_args<'a>(
             let t_res = t_res1.clone();
             in_context(
                 ctx2,
-                Rc::new(move |p: &RProgram| Program {
-                    content: BareProgram::PApp(Box::new(fun.clone()), Box::new(p.clone())),
-                    type_of: t_res.clone(),
+                Rc::new(move |p: &RProgram| {
+                    Program {
+                        content: BareProgram::PApp(Box::new(fun.clone()), Box::new(p.clone())),
+                        type_of: t_res.clone(),
+                    }
                 }),
                 |ctx3| gen_arg1(ctx3, t_arg),
             )
@@ -2827,20 +2864,24 @@ fn build_app_cont<'a>(
     let t_res = t_res.clone();
     let fun = fun.clone();
     let gen_arg = gen_arg.clone();
-    let next = Box::new(
-        move |ctx2: &mut ExplorerCtx<'_>| match resume(ctx2, sus_arg) {
-            Step::Fail => match sus_fun {
-                None => Step::Fail,
-                Some(sus_fun) => resume_next_fun(ctx2, &env, &gen_arg, sus_fun),
-            },
+    let next = Box::new(move |ctx2: &mut ExplorerCtx<'_>| {
+        match resume(ctx2, sus_arg) {
+            Step::Fail => {
+                match sus_fun {
+                    None => Step::Fail,
+                    Some(sus_fun) => resume_next_fun(ctx2, &env, &gen_arg, sus_fun),
+                }
+            }
             Step::Ok {
                 value: a,
                 suspend: sus_arg,
-            } => build_app_cont(
-                ctx2, &env, &x_name, &t_arg, &t_res, &fun, a, sus_arg, gen_arg, sus_fun,
-            ),
-        },
-    );
+            } => {
+                build_app_cont(
+                    ctx2, &env, &x_name, &t_arg, &t_res, &fun, a, sus_arg, gen_arg, sus_fun,
+                )
+            }
+        }
+    });
     Step::Ok {
         value: app,
         suspend: Suspend {
@@ -2953,10 +2994,12 @@ pub fn generate_aux_goals(ctx: &mut ExplorerCtx<'_>) -> Step<()> {
 fn eta_contract(p: RProgram) -> RProgram {
     match eta_contract_prime(&[], &p.content) {
         None => p,
-        Some(f) => Program {
-            content: f,
-            type_of: p.type_of,
-        },
+        Some(f) => {
+            Program {
+                content: f,
+                type_of: p.type_of,
+            }
+        }
     }
 }
 

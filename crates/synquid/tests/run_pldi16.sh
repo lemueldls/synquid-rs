@@ -8,14 +8,15 @@
 #   - runs target/release/synquid (or the binary in $SYNQUID_BIN) with
 #     `--print-stats --memoize <per-benchmark flags>` (the flag table mirrors
 #     `specs/test/pldi16/run_all.py`'s ALL_BENCHMARKS, the source of truth)
-#   - prints exit code, wall time, and SAME/DIFF vs tests/snapshots/pldi16/<Name>.out
+#   - prints exit code, wall time, and SAME/DIFF vs
+#     crates/synquid/tests/snapshots/pldi16/<Name>.out
 #
 # Exit status: 0 iff every benchmark matches its reference snapshot (or is a
 # timed-out reference-slow benchmark). `--variants` additionally runs the
 # run_all.py variant loop (def/nrt/ncc/nmus) checking only exit codes.
 
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../../.."
 
 BIN="${SYNQUID_BIN:-target/release/synquid}"
 TIMEOUT="${TIMEOUT:-25}"
@@ -35,6 +36,8 @@ if [ ! -x "$BIN" ]; then
   echo "build first: cargo build --release" >&2
   exit 1
 fi
+
+mkdir -p /tmp/opencode/bench
 
 # Per-benchmark options (run_all.py ALL_BENCHMARKS; group defaults in
 # GROUP_FLAGS, used by the `def` variant).
@@ -105,7 +108,7 @@ for f in specs/test/pldi16/*.sq; do
     timeout_n=$((timeout_n + 1)); status="TIMEOUT"
   elif [ "$COMPARE" = 1 ]; then
     normalize < "/tmp/opencode/bench/$n.out" > "/tmp/opencode/bench/$n.clean"
-    if diff -q "/tmp/opencode/bench/$n.clean" "tests/snapshots/pldi16/$n.out" > /dev/null 2>&1; then
+    if diff -q "/tmp/opencode/bench/$n.clean" "crates/synquid/tests/snapshots/pldi16/$n.out" > /dev/null 2>&1; then
       same=$((same + 1)); status="SAME"
     else
       mismatch=$((mismatch + 1)); status="DIFF"

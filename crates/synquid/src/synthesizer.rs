@@ -7,16 +7,16 @@ use crate::{
     error::ErrorMessage,
     horn_solver::FixPointSolver,
     logic::{
-        atoms_of, conjuncts_of, de_brujns, distinct_type_vars, is_data, sort_of, sort_substitute,
-        sort_substitute_fml, substitute, to_space, unify_sorts, var_name, vars_of, BinOp, Formula,
-        Sort, SortSubstitution, Substitution, DONT_CARE, VALUE_VAR_NAME,
+        BinOp, DONT_CARE, Formula, Sort, SortSubstitution, Substitution, VALUE_VAR_NAME, atoms_of,
+        conjuncts_of, de_brujns, distinct_type_vars, is_data, sort_of, sort_substitute,
+        sort_substitute_fml, substitute, to_space, unify_sorts, var_name, vars_of,
     },
-    program::{all_symbols, DatatypeDef, Environment, Goal, RProgram},
+    program::{DatatypeDef, Environment, Goal, RProgram, all_symbols},
     resolver::resolve_refinement,
     tc_solver::{CondQualsGen, MatchQualsGen, PredQualsGen, TypeQualsGen, TypingParams},
     type_checker::reconstruct,
     types::{
-        all_arg_types, last_type, to_monotype, to_sort, type_vars_of, BaseType, RType, TypeSkeleton,
+        BaseType, RType, TypeSkeleton, all_arg_types, last_type, to_monotype, to_sort, type_vars_of,
     },
 };
 
@@ -304,32 +304,34 @@ fn extract_cond_from_type(env: &Environment, vars: &[Formula], t: &RType) -> Vec
         return Vec::new();
     }
     match last_type(t) {
-        TypeSkeleton::ScalarT(BaseType::BoolT, fml) => match fml {
-            Formula::Binary(BinOp::Eq, e1, rhs) => {
-                if let Formula::Var(s, v) = e1.as_ref()
-                    && v == VALUE_VAR_NAME
-                    && s.as_ref() == &Sort::BoolS
-                {
-                    let sort_inst: SortSubstitution = type_vars_of(t)
-                        .iter()
-                        .zip(
-                            distinct_type_vars(type_vars_of(t).len())
-                                .into_iter()
-                                .map(Sort::VarS),
-                        )
-                        .map(|(k, v)| (k.clone(), v))
-                        .collect();
-                    let fml_prime = sort_substitute_fml(&sort_inst, rhs.as_ref());
-                    let formals: Vec<Formula> = vars_of(&fml_prime).into_iter().collect();
-                    return all_substitutions(env, &fml_prime, &formals, vars, &[], &[])
-                        .into_iter()
-                        .filter(|q| !is_data_eq(q))
-                        .collect();
+        TypeSkeleton::ScalarT(BaseType::BoolT, fml) => {
+            match fml {
+                Formula::Binary(BinOp::Eq, e1, rhs) => {
+                    if let Formula::Var(s, v) = e1.as_ref()
+                        && v == VALUE_VAR_NAME
+                        && s.as_ref() == &Sort::BoolS
+                    {
+                        let sort_inst: SortSubstitution = type_vars_of(t)
+                            .iter()
+                            .zip(
+                                distinct_type_vars(type_vars_of(t).len())
+                                    .into_iter()
+                                    .map(Sort::VarS),
+                            )
+                            .map(|(k, v)| (k.clone(), v))
+                            .collect();
+                        let fml_prime = sort_substitute_fml(&sort_inst, rhs.as_ref());
+                        let formals: Vec<Formula> = vars_of(&fml_prime).into_iter().collect();
+                        return all_substitutions(env, &fml_prime, &formals, vars, &[], &[])
+                            .into_iter()
+                            .filter(|q| !is_data_eq(q))
+                            .collect();
+                    }
+                    Vec::new()
                 }
-                Vec::new()
+                _ => Vec::new(),
             }
-            _ => Vec::new(),
-        },
+        }
         _ => Vec::new(),
     }
 }
@@ -471,14 +473,16 @@ fn extract_pred_qgen_from_type(
             }
             quals
         }
-        TypeSkeleton::ScalarT(_, fml) => extract_from_refinement(
-            use_all_args,
-            env,
-            actual_params,
-            actual_vars,
-            &sort_inst,
-            fml,
-        ),
+        TypeSkeleton::ScalarT(_, fml) => {
+            extract_from_refinement(
+                use_all_args,
+                env,
+                actual_params,
+                actual_vars,
+                &sort_inst,
+                fml,
+            )
+        }
         TypeSkeleton::FunctionT(_, t_arg, t_res) => {
             let mut quals =
                 extract_pred_qgen_from_type(use_all_args, env, actual_params, actual_vars, t_arg);

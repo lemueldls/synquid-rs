@@ -1,0 +1,21 @@
+[package]
+name = "synquid"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bimap = { version = "0.6.3" }
+clap = { version = "4.6.6", features = ["derive"] }
+musfix = { path = "../musfix" }
+pretty = { version = "0.12.5" }
+z3 = { version = "0.20.2" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "synth"
+harness = false
+
+[lints]
+workspace = true

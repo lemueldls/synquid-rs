@@ -14,28 +14,28 @@ use std::{
 };
 
 use crate::{
-    error::{no_pos, ErrorKind, ErrorMessage, SourcePos},
+    error::{ErrorKind, ErrorMessage, SourcePos, no_pos},
     horn_solver::FixPointSolver,
     logic::{
-        conjunction, conjuncts_of, de_brujns, ffalse, ftrue, sort_args_of, sort_substitute,
-        sort_substitute_fml, split_by_predicate, substitute, substitute_predicate, to_space,
-        unknown_name, unknowns_of, var_name, var_sort_name, vars_of, BinOp, Formula, QMap, QSpace,
-        Sort, Substitution, VALUE_VAR_NAME,
+        BinOp, Formula, QMap, QSpace, Sort, Substitution, VALUE_VAR_NAME, conjunction,
+        conjuncts_of, de_brujns, ffalse, ftrue, sort_args_of, sort_substitute, sort_substitute_fml,
+        split_by_predicate, substitute, substitute_predicate, to_space, unknown_name, unknowns_of,
+        var_name, var_sort_name, vars_of,
     },
+    pretty::{Doc, Pretty, hsp, show_doc, squotes, text, vsp},
     program::{
-        add_variable, all_measure_postconditions, all_measures_of, all_predicates, all_symbols,
-        is_bound, remove_variable, symbols_of_arity, type_substitute_env, Constraint, Environment,
+        Constraint, Environment, add_variable, all_measure_postconditions, all_measures_of,
+        all_predicates, all_symbols, is_bound, remove_variable, symbols_of_arity,
+        type_substitute_env,
     },
     resolver::add_all_variables,
     types::{
-        as_sort_subst, base_type_of, int, is_scalar_type, rename_var, shape, to_sort,
-        type_apply_solution, type_substitute, type_substitute_pred, type_vars_of, BaseType, RType,
-        TypeSkeleton, TypeSubstitution,
+        BaseType, RType, TypeSkeleton, TypeSubstitution, as_sort_subst, base_type_of, int,
+        is_scalar_type, rename_var, shape, to_sort, type_apply_solution, type_substitute,
+        type_substitute_pred, type_vars_of,
     },
-    util::{disjoint, restrict_domain, set_concat_map, to_disjoint_groups, Id},
+    util::{Id, disjoint, restrict_domain, set_concat_map, to_disjoint_groups},
 };
-
-use crate::pretty::{hsp, show_doc, squotes, text, vsp, Doc, Pretty};
 
 /// Qualifier generator for conditionals.
 pub type CondQualsGen = Rc<dyn Fn(&Environment, &[Formula]) -> QSpace>;
@@ -785,21 +785,25 @@ fn simplify_constraint_impl(solver: &mut TcSolver, c: Constraint) -> Result<(), 
             Ok(())
         }
         // Otherwise (shape mismatch): fail
-        Constraint::Subtype(_, t, t1, ..) => Err(throw_error(
-            &solver.state,
-            hsp(
-                text("Cannot match shape"),
-                vsp(
-                    squotes(shape(&t).pretty()),
-                    hsp(text("with shape"), squotes(shape(&t1).pretty())),
+        Constraint::Subtype(_, t, t1, ..) => {
+            Err(throw_error(
+                &solver.state,
+                hsp(
+                    text("Cannot match shape"),
+                    vsp(
+                        squotes(shape(&t).pretty()),
+                        hsp(text("with shape"), squotes(shape(&t1).pretty())),
+                    ),
                 ),
-            ),
-        )),
+            ))
+        }
         #[allow(unreachable_patterns)]
-        Constraint::WellFormed(_, t) => Err(throw_error(
-            &solver.state,
-            hsp(text("Cannot match shape"), squotes(shape(&t).pretty())),
-        )),
+        Constraint::WellFormed(_, t) => {
+            Err(throw_error(
+                &solver.state,
+                hsp(text("Cannot match shape"), squotes(shape(&t).pretty())),
+            ))
+        }
     }
 }
 
@@ -1128,33 +1132,45 @@ fn to_formula_scalar(env: &Environment, x: Id, sch: crate::types::RSchema) -> Op
     match sch {
         ForallT(..) | ForallP(..) => None,
         Monotype(_) if env.let_bound.contains(&x) => None,
-        Monotype(t) => match t {
-            TypeSkeleton::ScalarT(BaseType::IntT, Formula::Binary(BinOp::Eq, _, rhs)) => match *rhs
-            {
-                Formula::IntLit(n) => Some(Formula::IntLit(n)),
-                _ => None,
-            },
-            TypeSkeleton::ScalarT(BaseType::BoolT, Formula::Var(..)) => {
-                Some(Formula::BoolLit(true))
-            }
-            TypeSkeleton::ScalarT(BaseType::BoolT, Formula::Unary(crate::logic::UnOp::Not, e)) => {
-                match *e {
-                    Formula::Var(..) => Some(Formula::BoolLit(false)),
-                    _ => None,
+        Monotype(t) => {
+            match t {
+                TypeSkeleton::ScalarT(BaseType::IntT, Formula::Binary(BinOp::Eq, _, rhs)) => {
+                    match *rhs {
+                        Formula::IntLit(n) => Some(Formula::IntLit(n)),
+                        _ => None,
+                    }
                 }
-            }
-            TypeSkeleton::ScalarT(
-                BaseType::DatatypeT(dt, t_args, p_args),
-                Formula::Binary(BinOp::Eq, _, rhs),
-            ) if t_args.is_empty() && p_args.is_empty() => match *rhs {
-                Formula::Cons(_, name, args) if args.is_empty() && x == name => Some(
-                    Formula::Cons(Box::new(Sort::DataS(dt, Vec::new())), name, Vec::new()),
-                ),
+                TypeSkeleton::ScalarT(BaseType::BoolT, Formula::Var(..)) => {
+                    Some(Formula::BoolLit(true))
+                }
+                TypeSkeleton::ScalarT(
+                    BaseType::BoolT,
+                    Formula::Unary(crate::logic::UnOp::Not, e),
+                ) => {
+                    match *e {
+                        Formula::Var(..) => Some(Formula::BoolLit(false)),
+                        _ => None,
+                    }
+                }
+                TypeSkeleton::ScalarT(
+                    BaseType::DatatypeT(dt, t_args, p_args),
+                    Formula::Binary(BinOp::Eq, _, rhs),
+                ) if t_args.is_empty() && p_args.is_empty() => {
+                    match *rhs {
+                        Formula::Cons(_, name, args) if args.is_empty() && x == name => {
+                            Some(Formula::Cons(
+                                Box::new(Sort::DataS(dt, Vec::new())),
+                                name,
+                                Vec::new(),
+                            ))
+                        }
+                        _ => None,
+                    }
+                }
+                TypeSkeleton::ScalarT(b, _) => Some(Formula::Var(Box::new(to_sort(&b)), x)),
                 _ => None,
-            },
-            TypeSkeleton::ScalarT(b, _) => Some(Formula::Var(Box::new(to_sort(&b)), x)),
-            _ => None,
-        },
+            }
+        }
     }
 }
 
@@ -1172,22 +1188,24 @@ fn to_formula_scrutinee(env: &Environment, x: Id, sch: crate::types::RSchema) ->
     use crate::types::SchemaSkeleton::{ForallP, ForallT, Monotype};
     match sch {
         ForallT(..) | ForallP(..) => None,
-        Monotype(t) => match t {
-            TypeSkeleton::ScalarT(b @ BaseType::DatatypeT(..), _) => {
-                let is_scrutinized = env.used_scrutinees.iter().any(|p| {
-                    matches!(
-                        &p.content,
-                        crate::program::BareProgram::PSymbol(y) if *y == x
-                    )
-                });
-                if env.unfolded_vars.contains(&x) && !is_scrutinized {
-                    Some(Formula::Var(Box::new(to_sort(&b)), x))
-                } else {
-                    None
+        Monotype(t) => {
+            match t {
+                TypeSkeleton::ScalarT(b @ BaseType::DatatypeT(..), _) => {
+                    let is_scrutinized = env.used_scrutinees.iter().any(|p| {
+                        matches!(
+                            &p.content,
+                            crate::program::BareProgram::PSymbol(y) if *y == x
+                        )
+                    });
+                    if env.unfolded_vars.contains(&x) && !is_scrutinized {
+                        Some(Formula::Var(Box::new(to_sort(&b)), x))
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
             }
-            _ => None,
-        },
+        }
     }
 }
 
@@ -1253,45 +1271,47 @@ fn add_bindings(
     let x = vars.iter().next().expect("embedding: empty vars").clone();
     vars.remove(&x);
     match all_symbols(env).get(&x) {
-        Some(Monotype(t)) => match type_substitute(tass, t) {
-            TypeSkeleton::ScalarT(base_t, fml) => {
-                let mut fmls1: Vec<Formula> = vec![substitute_predicate(pass, &fml)];
-                fmls1.extend(
-                    all_measure_postconditions(include_quantified, &base_t, env)
-                        .iter()
-                        .map(|f| substitute_predicate(pass, f)),
-                );
-                let mut subst = Substitution::new();
-                subst.insert(
-                    VALUE_VAR_NAME.to_string(),
-                    Formula::Var(Box::new(to_sort(&base_t)), x.clone()),
-                );
-                let fmls1: BTreeSet<Formula> =
-                    fmls1.into_iter().map(|f| substitute(&subst, f)).collect();
-                let new_vars: BTreeSet<Id> = set_concat_map(
-                    |f| potential_vars(qmap, f),
-                    &fmls1.iter().cloned().collect(),
-                )
-                .into_iter()
-                .filter(|v| *v != x)
-                .collect();
-                let fmls2: BTreeSet<Formula> = fmls.union(&fmls1).cloned().collect();
-                let vars1: BTreeSet<Id> = vars.union(&new_vars).cloned().collect();
-                add_bindings(env, tass, pass, qmap, fmls2, vars1, include_quantified)
+        Some(Monotype(t)) => {
+            match type_substitute(tass, t) {
+                TypeSkeleton::ScalarT(base_t, fml) => {
+                    let mut fmls1: Vec<Formula> = vec![substitute_predicate(pass, &fml)];
+                    fmls1.extend(
+                        all_measure_postconditions(include_quantified, &base_t, env)
+                            .iter()
+                            .map(|f| substitute_predicate(pass, f)),
+                    );
+                    let mut subst = Substitution::new();
+                    subst.insert(
+                        VALUE_VAR_NAME.to_string(),
+                        Formula::Var(Box::new(to_sort(&base_t)), x.clone()),
+                    );
+                    let fmls1: BTreeSet<Formula> =
+                        fmls1.into_iter().map(|f| substitute(&subst, f)).collect();
+                    let new_vars: BTreeSet<Id> = set_concat_map(
+                        |f| potential_vars(qmap, f),
+                        &fmls1.iter().cloned().collect(),
+                    )
+                    .into_iter()
+                    .filter(|v| *v != x)
+                    .collect();
+                    let fmls2: BTreeSet<Formula> = fmls.union(&fmls1).cloned().collect();
+                    let vars1: BTreeSet<Id> = vars.union(&new_vars).cloned().collect();
+                    add_bindings(env, tass, pass, qmap, fmls2, vars1, include_quantified)
+                }
+                TypeSkeleton::LetT(y, t_def, t_body) => {
+                    let env1 = add_variable(
+                        &y,
+                        &t_def,
+                        &add_variable(&x, &t_body, &remove_variable(&x, env)),
+                    );
+                    add_bindings(&env1, tass, pass, qmap, fmls, vars_full, include_quantified)
+                }
+                TypeSkeleton::AnyT => BTreeSet::from([ffalse()]),
+                TypeSkeleton::FunctionT(..) => {
+                    panic!("embedding: encountered non-scalar variable {x} in 0-arity bucket")
+                }
             }
-            TypeSkeleton::LetT(y, t_def, t_body) => {
-                let env1 = add_variable(
-                    &y,
-                    &t_def,
-                    &add_variable(&x, &t_body, &remove_variable(&x, env)),
-                );
-                add_bindings(&env1, tass, pass, qmap, fmls, vars_full, include_quantified)
-            }
-            TypeSkeleton::AnyT => BTreeSet::from([ffalse()]),
-            TypeSkeleton::FunctionT(..) => {
-                panic!("embedding: encountered non-scalar variable {x} in 0-arity bucket")
-            }
-        },
+        }
         Some(ForallT(..) | ForallP(..)) | None => {
             add_bindings(env, tass, pass, qmap, fmls, vars, include_quantified)
         }
@@ -1549,19 +1569,21 @@ pub fn instantiate_cons_axioms(
     fml: &Formula,
 ) -> BTreeSet<Formula> {
     match fml {
-        Formula::Cons(res_s, ctor, args) => match res_s.as_ref() {
-            Sort::DataS(dt_name, _) => {
-                let mut acc: BTreeSet<Formula> = BTreeSet::new();
-                for (m_name, m) in all_measures_of(dt_name, env) {
-                    acc.insert(measure_axiom(res_s, ctor, args, m_val, &m_name, &m));
+        Formula::Cons(res_s, ctor, args) => {
+            match res_s.as_ref() {
+                Sort::DataS(dt_name, _) => {
+                    let mut acc: BTreeSet<Formula> = BTreeSet::new();
+                    for (m_name, m) in all_measures_of(dt_name, env) {
+                        acc.insert(measure_axiom(res_s, ctor, args, m_val, &m_name, &m));
+                    }
+                    for arg in args {
+                        acc.extend(instantiate_cons_axioms(env, None, arg));
+                    }
+                    acc
                 }
-                for arg in args {
-                    acc.extend(instantiate_cons_axioms(env, None, arg));
-                }
-                acc
+                _ => BTreeSet::new(),
             }
-            _ => BTreeSet::new(),
-        },
+        }
         Formula::Unary(_, e) => instantiate_cons_axioms(env, m_val, e),
         Formula::Binary(_, e1, e2) => {
             let mut acc = instantiate_cons_axioms(env, m_val, e1);
@@ -1657,14 +1679,16 @@ pub fn match_cons_type(
             }
             Ok(())
         }
-        _ => Err(throw_error(
-            &solver.state,
-            text(&format!(
-                "matchConsType: cannot match {} against {}",
-                show_doc(&formal.pretty()),
-                show_doc(&actual.pretty()),
-            )),
-        )),
+        _ => {
+            Err(throw_error(
+                &solver.state,
+                text(&format!(
+                    "matchConsType: cannot match {} against {}",
+                    show_doc(&formal.pretty()),
+                    show_doc(&actual.pretty()),
+                )),
+            ))
+        }
     }
 }
 
@@ -1733,16 +1757,22 @@ mod tests {
     use super::*;
     use crate::{
         cli::default_horn_solver_params,
-        logic::{ftrue, ge, int_lit, le, to_space, Formula, Sort},
+        logic::{Formula, Sort, ftrue, ge, int_lit, le, to_space},
         parser::parse_program,
-        program::{add_variable, Goal},
+        program::{Goal, add_variable},
         resolver::resolve_decls,
         types::{int, to_monotype, type_substitute},
     };
 
+    /// Path of a fixture under the workspace root (tests run with the package
+    /// manifest dir as CWD, so fixtures resolve through the manifest dir).
+    fn repo_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
     fn replicate_goal() -> Goal {
-        let src =
-            fs::read_to_string("specs/test/pldi16/List-Replicate.sq").expect("read benchmark");
+        let src = fs::read_to_string(repo_root().join("specs/test/pldi16/List-Replicate.sq"))
+            .expect("read benchmark");
         let decls = parse_program(&src, "List-Replicate.sq").expect("parse benchmark");
         let (goals, ..) = resolve_decls(&decls).expect("resolve benchmark");
         goals
@@ -1773,14 +1803,11 @@ mod tests {
         let type_quals_gen: TypeQualsGen = Rc::new(|_, val, _| {
             let is_int = matches!(val, Formula::Var(s, _) if *s.as_ref() == Sort::IntS);
             if is_int {
-                to_space(
-                    None,
-                    vec![
-                        ge(val.clone(), int_lit(0)),
-                        le(val.clone(), int_lit(0)),
-                        crate::logic::eq(val.clone(), int_lit(0)),
-                    ],
-                )
+                to_space(None, vec![
+                    ge(val.clone(), int_lit(0)),
+                    le(val.clone(), int_lit(0)),
+                    crate::logic::eq(val.clone(), int_lit(0)),
+                ])
             } else {
                 to_space(None, vec![])
             }
@@ -1878,16 +1905,13 @@ mod tests {
         // `a` is unified with a fresh instance of Nat; the substituted
         // constraint remains as a simple constraint.
         assert_eq!(state.type_assignment.get("a"), Some(&int_unknown("U0")));
-        assert_eq!(
-            state.simple_constraints,
-            vec![Constraint::Subtype(
-                Rc::new((*env).clone()),
-                int_unknown("U0"),
-                nat_t.clone(),
-                false,
-                String::new()
-            )]
-        );
+        assert_eq!(state.simple_constraints, vec![Constraint::Subtype(
+            Rc::new((*env).clone()),
+            int_unknown("U0"),
+            nat_t.clone(),
+            false,
+            String::new()
+        )]);
     }
 
     #[test]
@@ -1922,10 +1946,12 @@ mod tests {
         // constraints are satisfied by at least one candidate valuation.
         assert!(state1.qualifier_map.contains_key("U0"));
         assert!(!state1.candidates.is_empty());
-        assert!(state1
-            .candidates
-            .iter()
-            .all(|c| c.invalid_constraints.is_empty()));
+        assert!(
+            state1
+                .candidates
+                .iter()
+                .all(|c| c.invalid_constraints.is_empty())
+        );
         assert!(state1.candidates.iter().all(|c| !c.solution.is_empty()));
         assert_eq!(state1.type_assignment.get("a"), Some(&int_unknown("U0")));
         // Determinism: a second run from the same initial state ends in the
@@ -1983,47 +2009,44 @@ mod tests {
             BaseType::DatatypeT("List".to_string(), Vec::new(), Vec::new()),
             list_t_fml.clone(),
         );
-        assert_eq!(
-            state.simple_constraints,
-            vec![
-                // Contravariant argument check: spec's Nat <: body's U0
-                // (`Subtype env tArg2 tArg1`).
-                Constraint::Subtype(
-                    Rc::new((*env).clone()),
-                    nat_t,
-                    int_unknown("U0"),
-                    false,
-                    String::new()
+        assert_eq!(state.simple_constraints, vec![
+            // Contravariant argument check: spec's Nat <: body's U0
+            // (`Subtype env tArg2 tArg1`).
+            Constraint::Subtype(
+                Rc::new((*env).clone()),
+                nat_t,
+                int_unknown("U0"),
+                false,
+                String::new()
+            ),
+            // Covariant result: inner function, contravariant arg int <: int.
+            Constraint::Subtype(
+                Rc::new(env1),
+                int(ftrue()),
+                int(ftrue()),
+                false,
+                String::new()
+            ),
+            // Covariant result: List type-argument decomposition.
+            Constraint::Subtype(
+                Rc::new(env2.clone()),
+                int(ftrue()),
+                int(ftrue()),
+                false,
+                String::new()
+            ),
+            // Covariant result: refinements, differing formulas are kept
+            // (the reference falls through to the simple-constraint arm).
+            Constraint::Subtype(
+                Rc::new(env2),
+                TypeSkeleton::ScalarT(
+                    BaseType::DatatypeT("List".to_string(), Vec::new(), Vec::new()),
+                    Formula::Unknown(BTreeMap::new(), "U1".to_string()),
                 ),
-                // Covariant result: inner function, contravariant arg int <: int.
-                Constraint::Subtype(
-                    Rc::new(env1),
-                    int(ftrue()),
-                    int(ftrue()),
-                    false,
-                    String::new()
-                ),
-                // Covariant result: List type-argument decomposition.
-                Constraint::Subtype(
-                    Rc::new(env2.clone()),
-                    int(ftrue()),
-                    int(ftrue()),
-                    false,
-                    String::new()
-                ),
-                // Covariant result: refinements, differing formulas are kept
-                // (the reference falls through to the simple-constraint arm).
-                Constraint::Subtype(
-                    Rc::new(env2),
-                    TypeSkeleton::ScalarT(
-                        BaseType::DatatypeT("List".to_string(), Vec::new(), Vec::new()),
-                        Formula::Unknown(BTreeMap::new(), "U1".to_string()),
-                    ),
-                    list_t_rest,
-                    false,
-                    String::new()
-                ),
-            ]
-        );
+                list_t_rest,
+                false,
+                String::new()
+            ),
+        ]);
     }
 }
