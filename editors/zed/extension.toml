@@ -1,0 +1,20 @@
+id = "synquid"
+name = "Synquid"
+version = "0.0.1"
+schema_version = 1
+description = "Synquid .sq language support (liquid-type program synthesis)"
+repository = "https://github.com/lemueldls/synquid-rs"
+authors = ["Lemuel DLS <noreply@git.lemueldls.dev>"]
+languages = ["languages/synquid"]
+
+[lib]
+
+[grammars.synquid]
+repository = "https://github.com/lemueldls/tree-sitter-synquid"
+rev = "45cdcbceea0cbd173e473aa73ee536b421051f96"
+
+[language_servers]
+
+[slash_commands]
+
+[indexed_docs_providers]

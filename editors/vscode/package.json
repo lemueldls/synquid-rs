@@ -1,0 +1,39 @@
+{
+  "name": "synquid",
+  "displayName": "Synquid",
+  "description": "Synquid .sq language support (liquid-type program synthesis)",
+  "version": "0.0.1",
+  "publisher": "synquid-rs",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "synquid",
+        "aliases": [
+          "Synquid",
+          "synquid"
+        ],
+        "extensions": [
+          ".sq"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "synquid",
+        "scopeName": "source.synquid",
+        "path": "./syntaxes/synquid.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.1.0"
+  }
+}

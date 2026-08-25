@@ -1,0 +1,12 @@
+name = "Synquid"
+grammar = "synquid"
+path_suffixes = ["sq"]
+line_comments = ["--"]
+block_comment = ["{-", "-}"]
+autoclose_before = ",=)]}"
+word_characters = ["'"]
+brackets = [
+    { start = "(", end = ")", close = true, newline = false },
+    { start = "[", end = "]", close = true, newline = false },
+    { start = "{", end = "}", close = true, newline = false },
+]
